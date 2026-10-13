@@ -50,6 +50,23 @@ type VisitHit = {
   kotQty: number;
   botQty: number;
 };
+
+function sameHits(current: VisitHit[], next: VisitHit[]) {
+  return (
+    current.length === next.length &&
+    current.every(
+      (item, index) =>
+        item.code === next[index].code &&
+        item.phone === next[index].phone &&
+        item.status === next[index].status &&
+        item.childCount === next[index].childCount &&
+        item.tableNo === next[index].tableNo &&
+        item.dueNu === next[index].dueNu &&
+        item.kotQty === next[index].kotQty &&
+        item.botQty === next[index].botQty,
+    )
+  );
+}
 type CheckStep = "kind" | "time" | "phone" | "children" | "pay" | "journal" | "adding";
 type CheckDraft = {
   step: CheckStep;
@@ -203,8 +220,11 @@ export function CashierTouch({
   const [boardAt, setBoardAt] = useState(0);
   const [tab, setTab] = useState("playing");
   const [scanText, setScanText] = useState(query ?? "");
+  const [counterClear, setCounterClear] = useState(false);
   const [hits, setHits] = useState<VisitHit[]>([]);
   const [hitAt, setHitAt] = useState(0);
+  const hitsRef = useRef(hits);
+  hitsRef.current = hits;
   const playRates = useMemo(() => [...rates].sort((a, b) => a.minutes - b.minutes), [rates]);
   const playRate = playRates.find((rate) => rate.minutes === (check?.minutes ?? 30)) ?? playRates.find((rate) => rate.minutes === 30) ?? playRates[0] ?? null;
   const ranked = open
@@ -240,10 +260,14 @@ export function CashierTouch({
   const timeUp = ranked.filter((row) => !row.walkIn && !row.held && row.left < 0).sort((a, b) => b.left - a.left);
   const overdue = timeUp.length;
   const ending = ranked.filter((row) => !row.walkIn && !row.held && row.left >= 0 && row.left <= 5).length;
-  const lookup = (query ?? "").trim();
-  const status = error || ok || (check ? (check.step === "kind" ? "Left and right choose walk-in or play. Enter continues." : check.step === "time" ? "Up and down choose the play time. Enter continues." : "Enter moves on. Escape cancels.") : openVisit ? `${walkIn ? tableLabel(openVisit.tableNo) : formatPhone(openVisit.phone)} is on this till` : lookup ? `No open play card for ${lookup}` : "Alt+N asks walk-in or play. Scan a ticket to add food to that family.");
+  const lookup = counterClear ? "" : (query ?? "").trim();
+  const status = error || ok || (check ? (check.step === "kind" ? "Left and right choose walk-in or play. Enter continues." : check.step === "time" ? "Up and down choose the play time. Enter continues." : "Enter moves on. Escape cancels.") : openVisit ? `${walkIn ? tableLabel(openVisit.tableNo) : formatPhone(openVisit.phone)} is on this till` : counterClear ? "Bill held. The counter is clear." : lookup ? `No open play card for ${lookup}` : "Alt+N asks walk-in or play. Scan a ticket to add food to that family.");
   const extra = overtime ? overtimeSentence(overtime) : "";
   const poleRef = useRef<PolePayload | null>(null);
+
+  useEffect(() => {
+    if (openVisit) setCounterClear(false);
+  }, [openVisit]);
 
   useEffect(() => {
     const checkin = tender?.kind === "checkin" ? tender : null;
@@ -709,8 +733,8 @@ export function CashierTouch({
   useEffect(() => {
     const term = scanText.trim();
     if (!term) {
-      setHits([]);
-      setHitAt(0);
+      setHits((current) => (current.length === 0 ? current : []));
+      setHitAt((current) => (current === 0 ? current : 0));
       return;
     }
     const needle = term.toLowerCase();
@@ -731,15 +755,16 @@ export function CashierTouch({
         },
       ];
     });
-    setHits(local);
-    setHitAt(0);
+    setHits((current) => (sameHits(current, local) ? current : local));
+    if (!sameHits(hitsRef.current, local)) setHitAt(0);
     const timer = window.setTimeout(() => {
       void fetch(`/api/till/search?q=${encodeURIComponent(term)}`)
         .then((response) => (response.ok ? response.json() : { hits: [] }))
         .then((body: { hits?: VisitHit[] }) => {
           const remote = body.hits ?? [];
           const seen = new Set(local.map((item) => item.code));
-          setHits([...local, ...remote.filter((item) => !seen.has(item.code))].slice(0, 8));
+          const merged = [...local, ...remote.filter((item) => !seen.has(item.code))].slice(0, 8);
+          setHits((current) => (sameHits(current, merged) ? current : merged));
         })
         .catch(() => undefined);
     }, 180);
@@ -753,9 +778,26 @@ export function CashierTouch({
     setPeopleOpen(false);
     setRecentOpen(false);
     setTimeUpOpen(false);
+    setCounterClear(false);
     book.setSelectedCode("");
     setTab("playing");
     setMenuOpen(true);
+  }
+
+  function holdCounter() {
+    setCheck(null);
+    setTender(null);
+    setAskTable(false);
+    setTableError("");
+    setPeopleOpen(false);
+    setRecentOpen(false);
+    setTimeUpOpen(false);
+    setMenuOpen(false);
+    setHits([]);
+    setScanText("");
+    setTab("playing");
+    setCounterClear(true);
+    book.openBill("");
   }
 
   useEffect(() => {
@@ -1360,7 +1402,7 @@ export function CashierTouch({
               }
             />
           ) : (
-            <ChildSheet venueName={venueName} visit={ranked[Math.min(boardAt, Math.max(0, ranked.length - 1))]?.item ?? null} />
+            <ChildSheet venueName={venueName} visit={counterClear ? null : (ranked[Math.min(boardAt, Math.max(0, ranked.length - 1))]?.item ?? null)} />
           )}
         </div>
         {showPack && visit && qr ? (
@@ -1452,6 +1494,12 @@ export function CashierTouch({
             <small>PgUp</small>
             <span>Recent</span>
           </button>
+          {openVisit ? (
+            <button type="button" className="tshong-fkey" onClick={holdCounter}>
+              <small>Hold</small>
+              <span>Clear</span>
+            </button>
+          ) : null}
           {openVisit ? (
             <button
               type="button"
@@ -1936,26 +1984,36 @@ function LineVoid({
   onClose: () => void;
   onVoid: (secret: string) => void;
 }) {
-  const formRef = useRef<HTMLFormElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  const slipRef = useRef(line);
+  if (line) slipRef.current = line;
+  const slip = line ?? slipRef.current;
   const [armed, setArmed] = useState(false);
   const [stamp, setStamp] = useState("");
-  const cancelQty = line ? Math.max(0, line.firedQty - next) : 0;
+  const [cancelQty, setCancelQty] = useState(0);
 
   useEffect(() => {
-    if (!armed || !line) return;
+    if (!armed) return;
     document.body.dataset.print = "kot";
-    const done = () => {
+    let closed = false;
+    const finish = () => {
+      if (closed) return;
+      closed = true;
       delete document.body.dataset.print;
-      window.removeEventListener("afterprint", done);
-      formRef.current?.requestSubmit();
+      closeRef.current();
     };
-    window.addEventListener("afterprint", done);
+    window.addEventListener("afterprint", finish);
+    const timer = window.setTimeout(finish, 4000);
     window.print();
-    return () => window.removeEventListener("afterprint", done);
-  }, [armed, line]);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("afterprint", finish);
+    };
+  }, [armed]);
 
   return (
-    <Dialog open={line != null} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={line != null || armed} onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Void a sent dish</DialogTitle>
@@ -1963,20 +2021,22 @@ function LineVoid({
             The kitchen already has this. A manager PIN voids it and prints a cancel.
           </DialogDescription>
         </DialogHeader>
-        {line ? (
+        {slip ? (
           <form
-            ref={formRef}
             className="grid gap-3"
             onSubmit={(event) => {
               event.preventDefault();
               const pin = String(new FormData(event.currentTarget).get("secret") ?? "").trim();
-              if (!pin) return;
-              if (cancelQty > 0 && !armed) {
+              if (!pin || !line) return;
+              const qty = Math.max(0, line.firedQty - next);
+              onVoid(pin);
+              if (qty > 0) {
+                setCancelQty(qty);
                 setStamp(new Date().toISOString());
                 setArmed(true);
                 return;
               }
-              onVoid(pin);
+              onClose();
             }}
           >
             <Field label="Manager PIN">
@@ -1996,8 +2056,8 @@ function LineVoid({
                 staff={staffName}
                 reprint={false}
                 cancel
-                ticket={line.outlet === "cafe" ? "bot" : "kot"}
-                lines={[{ name: line.name, qty: cancelQty, outlet: line.outlet, note: "Cancel" }]}
+                ticket={slip.outlet === "cafe" ? "bot" : "kot"}
+                lines={[{ name: slip.name, qty: cancelQty, outlet: slip.outlet, note: "Cancel" }]}
               />
               </PrintPortal>
             ) : null}

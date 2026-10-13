@@ -43,12 +43,13 @@ export function HoldSheet({
   onOpen?: (visit: VisitView) => void;
   onLeave?: (visit: VisitView) => void;
   onCancel?: (visit: VisitView) => void;
-  onRelease?: (visit: VisitView, choice: "waive" | "delete", secret: string) => void;
+  onRelease?: (visit: VisitView, choice: "waive" | "delete", secret: string) => unknown;
 }) {
   const [find, setFind] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [gate, setGate] = useState<{ id: number; mode: "over" | "void" } | null>(null);
+  const [gateVisit, setGateVisit] = useState<VisitView | null>(null);
   const needle = find.trim().toLowerCase().replace(/\s/g, "");
 
   const rows = useMemo(() => {
@@ -84,6 +85,7 @@ export function HoldSheet({
         event.stopPropagation();
         if (gate) {
           setGate(null);
+          setGateVisit(null);
           return;
         }
         onClose();
@@ -102,10 +104,12 @@ export function HoldSheet({
         const over = playIsOvertime(selected.visit, clockOf(selected.visit, now));
         if (over) {
           setGate({ id: selected.visit.id, mode: "over" });
+          setGateVisit(selected.visit);
           return;
         }
         if (!canLeaveOnTime(selected.visit, now) && !canFloorDrop(selected.visit, now)) {
           setGate({ id: selected.visit.id, mode: "void" });
+          setGateVisit(selected.visit);
           return;
         }
         if (canLeaveOnTime(selected.visit, now) && onLeave) {
@@ -213,7 +217,7 @@ export function HoldSheet({
                 )}
                 {visit.dueNu > 0 ? <b>{formatNu(visit.dueNu)}</b> : <b className="hold-clear">Paid</b>}
                 {over ? (
-                  <Button type="button" size="xs" variant="outline" onClick={() => setGate({ id: visit.id, mode: "over" })}>
+                  <Button type="button" size="xs" variant="outline" onClick={() => { setGate({ id: visit.id, mode: "over" }); setGateVisit(visit); }}>
                     Delete
                   </Button>
                 ) : canLeaveOnTime(visit, now) ? (
@@ -247,7 +251,7 @@ export function HoldSheet({
                   </form>
                   )
                 ) : (
-                  <Button type="button" size="xs" variant="outline" onClick={() => setGate({ id: visit.id, mode: "void" })}>
+                  <Button type="button" size="xs" variant="outline" onClick={() => { setGate({ id: visit.id, mode: "void" }); setGateVisit(visit); }}>
                     Void
                   </Button>
                 )}
@@ -258,12 +262,15 @@ export function HoldSheet({
         )}
       </div>
       <OvertimeGate
-        visit={visits.find((visit) => visit.id === gate?.id) ?? null}
+        visit={gate ? (visits.find((item) => item.id === gate.id) ?? gateVisit) : null}
         mode={gate?.mode ?? "over"}
         desk={desk}
         venue={venue}
         staff={staff}
-        onClose={() => setGate(null)}
+        onClose={() => {
+          setGate(null);
+          setGateVisit(null);
+        }}
         onOpen={onOpen}
         onRelease={onRelease}
       />
@@ -288,26 +295,62 @@ function OvertimeGate({
   staff: string;
   onClose: () => void;
   onOpen?: (visit: VisitView) => void;
-  onRelease?: (visit: VisitView, choice: "waive" | "delete", secret: string) => void;
+  onRelease?: (visit: VisitView, choice: "waive" | "delete", secret: string) => unknown;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   const [armed, setArmed] = useState(false);
   const [stamp, setStamp] = useState("");
+  const [pinError, setPinError] = useState("");
   const fired = visit?.lines.filter((line) => !line.paid && line.firedQty > 0) ?? [];
 
   useEffect(() => {
     if (!armed) return;
     document.body.dataset.print = "kot";
-    const done = () => {
+    let closed = false;
+    const finish = () => {
+      if (closed) return;
+      closed = true;
       delete document.body.dataset.print;
-      window.removeEventListener("afterprint", done);
-      const button = formRef.current?.querySelector('button[value="delete"]');
-      if (button instanceof HTMLButtonElement) formRef.current?.requestSubmit(button);
+      closeRef.current();
     };
-    window.addEventListener("afterprint", done);
+    window.addEventListener("afterprint", finish);
+    const timer = window.setTimeout(finish, 4000);
     window.print();
-    return () => window.removeEventListener("afterprint", done);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("afterprint", finish);
+    };
   }, [armed]);
+
+  function release(choice: "waive" | "delete") {
+    const form = formRef.current;
+    if (!form || !visit) return;
+    const pin = String(new FormData(form).get("secret") ?? "").trim();
+    if (!pin) {
+      setPinError("Enter the manager PIN.");
+      return;
+    }
+    setPinError("");
+    if (onRelease) {
+      const saved = onRelease(visit, choice, pin);
+      if (saved == null) {
+        setPinError("Could not void this bill.");
+        return;
+      }
+      if (choice === "delete" && fired.length > 0) {
+        setStamp(new Date().toISOString());
+        setArmed(true);
+        return;
+      }
+      onClose();
+      return;
+    }
+    const choiceInput = form.querySelector<HTMLInputElement>('input[name="choice"]');
+    if (choiceInput) choiceInput.value = choice;
+    form.requestSubmit();
+  }
 
   return (
     <Dialog open={visit != null} onOpenChange={(open) => !open && onClose()}>
@@ -338,35 +381,25 @@ function OvertimeGate({
               action={onRelease ? undefined : releaseHoldAction}
               className="grid gap-3"
               onSubmit={(event) => {
-                const submitter = event.nativeEvent instanceof SubmitEvent ? event.nativeEvent.submitter : null;
-                const choice = submitter instanceof HTMLButtonElement ? submitter.value : "";
-                const pin = String(new FormData(event.currentTarget).get("secret") ?? "").trim();
-                if (choice === "delete" && fired.length > 0 && !armed && pin) {
-                  event.preventDefault();
-                  setStamp(new Date().toISOString());
-                  setArmed(true);
-                  return;
-                }
-                if (onRelease && visit && pin && (choice === "waive" || choice === "delete")) {
-                  event.preventDefault();
-                  onRelease(visit, choice === "waive" ? "waive" : "delete", pin);
-                  onClose();
-                }
+                if (onRelease) event.preventDefault();
               }}
             >
               <input type="hidden" name="visitId" value={visit.id} />
               <input type="hidden" name="code" value={visit.code} />
               <input type="hidden" name="back" value={desk} />
+              <input type="hidden" name="choice" value="delete" />
               <Field label="Manager PIN">
                 <Input name="secret" type="text" inputMode="numeric" autoComplete="off" autoCapitalize="off" spellCheck={false} autoFocus className="till-secret" />
               </Field>
+              {pinError ? <p className="text-sm text-destructive">{pinError}</p> : null}
+              {armed ? <p className="text-sm text-muted-foreground">Bill voided. Printing the kitchen cancel.</p> : null}
               <div className="flex gap-2">
                 {mode === "over" ? (
-                  <Button type="submit" name="choice" value="waive" variant="outline" className="flex-1">
+                  <Button type="button" variant="outline" className="flex-1" onClick={() => release("waive")}>
                     Free of charge
                   </Button>
                 ) : null}
-                <Button type="submit" name="choice" value="delete" variant="destructive" className="flex-1">
+                <Button type="button" variant="destructive" className="flex-1" onClick={() => release("delete")}>
                   Void
                 </Button>
               </div>

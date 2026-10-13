@@ -207,7 +207,7 @@ export function useTillBook(query?: string) {
     () => foldOps(base.visits, outbox, base.menu, base.rates, base.extraPerMinNu ?? 0, chargeRatesOf(base)),
     [base, outbox],
   );
-  const open = visits.filter((visit) => visit.status === "open");
+  const open = useMemo(() => visits.filter((visit) => visit.status === "open"), [visits]);
   const selected = open.find((visit) => visit.code === selectedCode) ?? (focus?.code === selectedCode ? focus : null);
 
   const commit = useCallback(
