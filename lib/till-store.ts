@@ -8,9 +8,14 @@ export type TillBase = {
   todayNu: number;
   playNu: number;
   foodNu: number;
+  kotNu: number;
+  botNu: number;
+  nextReceipt: number;
+  generation: number;
   venueName: string;
   address: string;
   rates: Rate[];
+  extraPerMinNu: number;
   bankAccount: string;
   bankPayload: string;
   payee: string;
@@ -19,6 +24,10 @@ export type TillBase = {
   receiptNote: string;
   receiptThanks: string;
   receiptRules: string;
+  scOn: boolean;
+  scPercent: number;
+  gstOn: boolean;
+  gstPercent: number;
   savedAt: string;
 };
 
@@ -40,9 +49,14 @@ export function emptyBase(): TillBase {
     todayNu: 0,
     playNu: 0,
     foodNu: 0,
+    kotNu: 0,
+    botNu: 0,
+    nextReceipt: 1,
+    generation: 0,
     venueName: "Tumble Jungle",
     address: "",
     rates: [],
+    extraPerMinNu: 0,
     bankAccount: "",
     bankPayload: "",
     payee: "",
@@ -51,6 +65,10 @@ export function emptyBase(): TillBase {
     receiptNote: "",
     receiptThanks: "",
     receiptRules: "",
+    scOn: false,
+    scPercent: 10,
+    gstOn: false,
+    gstPercent: 5,
     savedAt: "",
   };
 }

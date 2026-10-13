@@ -14,6 +14,7 @@ export function Receipt({
   note = "",
   thanks = "Thank you",
   rules = [],
+  number = null,
 }: {
   venue: string;
   address: string;
@@ -28,6 +29,7 @@ export function Receipt({
   note?: string;
   thanks?: string;
   rules?: string[];
+  number?: number | null;
 }) {
   const bankRows = banks.length > 0 ? banks : bank > 0 ? [{ name: "Bank QR", ref: "", amount: bank }] : [];
   const paid = [
@@ -48,6 +50,12 @@ export function Receipt({
           <span>When</span>
           <span>{when}</span>
         </p>
+        {number ? (
+          <p className="receipt-row">
+            <span>Receipt</span>
+            <span className="receipt-code">{number}</span>
+          </p>
+        ) : null}
         {code ? (
           <p className="receipt-row">
             <span>Ticket</span>

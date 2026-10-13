@@ -39,11 +39,11 @@ export function StickerSheet({
   return (
     <main className="sticker-page">
       <header className="no-print sticker-tools">
-        <div className="min-w-0">
-          <p className="text-xs font-medium tracking-[0.16em] text-muted-foreground uppercase">Visit {code}</p>
-          <h1 className="font-heading text-3xl text-primary">Play stickers</h1>
-          <p className="mt-1 max-w-lg text-sm text-muted-foreground">
-            {kids === 1 ? "1 child" : `${kids} children`} · {phone}. Each label is this visit. Scan it to add food or more play time.
+        <div className="sticker-id">
+          <p>Visit {code}</p>
+          <h1>Play stickers</h1>
+          <p>
+            {kids === 1 ? "1 child" : `${kids} children`} · {phone}
           </p>
         </div>
         <div className="sticker-actions">
@@ -76,6 +76,7 @@ export function StickerSheet({
             </article>
           ))}
         </div>
+        <p className="no-print sticker-note">Scan a sticker at the till to open this visit.</p>
       </section>
     </main>
   );

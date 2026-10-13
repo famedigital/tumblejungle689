@@ -2,10 +2,35 @@ export function formatNu(amount: number): string {
   return `Nu ${amount.toLocaleString("en-IN")}`;
 }
 
+export function codeFromScan(raw: string): string {
+  const fromUrl = raw.match(/\/t\/([A-Za-z0-9]+)/i);
+  if (fromUrl) return fromUrl[1].toUpperCase();
+  return raw.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
 export function tableLabel(tableNo: string): string {
   const table = tableNo.trim().replace(/^table\s+/i, "");
   if (!table || table.toLowerCase() === "standing") return "Standing";
   return `Table ${table}`;
+}
+
+export function tableTone(tableNo: string): string {
+  const table = tableNo.trim().replace(/^table\s+/i, "").toLowerCase();
+  if (!table) return "0";
+  if (table === "standing") return "stand";
+  const number = Number(table);
+  if (Number.isInteger(number) && number >= 1 && number <= 8) return String(number);
+  let hash = 0;
+  for (const char of table) hash = (hash + char.charCodeAt(0)) % 8;
+  return String(hash + 1);
+}
+
+export function formatClock(iso: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Thimphu",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(iso));
 }
 
 export function formatWhen(iso: string): string {

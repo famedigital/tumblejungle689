@@ -21,6 +21,7 @@ export default async function ProductsPage({
       <Flash error={query.error} ok={query.ok} />
       <ProductHub
         rates={settings.rates}
+        extraPerMinNu={settings.extraPerMinNu}
         menu={menu}
         categories={categories.map((category) => ({
           id: category.id,

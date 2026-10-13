@@ -10,6 +10,7 @@ import {
   dayTotals,
   getSettings,
   getVisitById,
+  holdPlay,
   leaveOnTime,
   listMenu,
   listOpenVisits,
@@ -17,6 +18,7 @@ import {
   removeLatestUnpaidBlock,
   removeTabLine,
   saveKot,
+  deliverKot,
   searchVisit,
   settleVisit,
   voidLineTo,
@@ -54,9 +56,14 @@ export async function loadTillSnapshot(term?: string): Promise<TillSnapshot> {
     todayNu: day.totalNu,
     playNu: day.playNu,
     foodNu: day.foodNu,
+    kotNu: day.kotNu,
+    botNu: day.botNu,
+    nextReceipt: settings.nextReceipt,
+    generation: 2,
     venueName: settings.venueName,
     address: settings.address,
     rates: settings.rates,
+    extraPerMinNu: settings.extraPerMinNu,
     bankAccount: settings.bankAccount,
     bankPayload: settings.bankPayload,
     payee: settings.payee,
@@ -65,6 +72,10 @@ export async function loadTillSnapshot(term?: string): Promise<TillSnapshot> {
     receiptNote: settings.receiptNote,
     receiptThanks: settings.receiptThanks,
     receiptRules: settings.receiptRules,
+    scOn: settings.scOn,
+    scPercent: settings.scPercent,
+    gstOn: settings.gstOn,
+    gstPercent: settings.gstPercent,
     savedAt: new Date().toISOString(),
     focus,
   };
@@ -78,6 +89,9 @@ export async function applyTillBatch(ops: TillOp[], session: Session): Promise<{
   todayNu?: number;
   playNu?: number;
   foodNu?: number;
+  kotNu?: number;
+  botNu?: number;
+  nextReceipt?: number;
 }> {
   const applied: { id: string; visit: VisitView }[] = [];
   for (const op of ops) {
@@ -100,6 +114,8 @@ export async function applyTillBatch(ops: TillOp[], session: Session): Promise<{
     todayNu: day?.totalNu,
     playNu: day?.playNu,
     foodNu: day?.foodNu,
+    kotNu: day?.kotNu,
+    botNu: day?.botNu,
   };
 }
 
@@ -169,12 +185,18 @@ async function runOp(op: TillOp, session: Session): Promise<VisitView> {
   if (op.kind === "qty") return changeLineQty(await lineId(visit.id, op.lineKey), op.delta);
   if (op.kind === "removeLine") return removeTabLine(await lineId(visit.id, op.lineKey));
   if (op.kind === "addChildren") return addChildren(visit.id, op.childCount);
-  if (op.kind === "addPlay") return addPlayBlock(visit.id, op.minutes);
+  if (op.kind === "addPlay") return addPlayBlock(visit.id, op.minutes, op.phone ?? "");
   if (op.kind === "removePlay") return removeLatestUnpaidBlock(visit.id);
+  if (op.kind === "holdPlay") return holdPlay(visit.id);
   if (op.kind === "saveKot") {
     const ids: number[] = [];
     for (const key of op.lineKeys) ids.push(await lineId(visit.id, key));
     return saveKot(visit.id, op.tableNo, ids);
+  }
+  if (op.kind === "deliverKot") {
+    const ids: number[] = [];
+    for (const key of op.lineKeys) ids.push(await lineId(visit.id, key));
+    return deliverKot(visit.id, ids);
   }
   if (op.kind === "leave") return leaveOnTime(visit.id, { id: session.staffId, name: session.name });
   if (op.kind === "cancel") return cancelHold(visit.id, { id: session.staffId, name: session.name });
@@ -187,7 +209,7 @@ async function runOp(op: TillOp, session: Session): Promise<VisitView> {
     return voidLineTo(await lineId(visit.id, op.lineKey), op.nextQty, actor);
   }
   const pay = payOf(op.method, op.cashNu, op.bankNu);
-  return settleVisit(visit.id, pay, op.journal, op.payBank);
+  return settleVisit(visit.id, pay, op.journal, op.payBank, op.receiptNo);
 }
 
 function payOf(method: string, cashNu?: number, bankNu?: number): PayMethod | { cashNu: number; bankNu: number } {

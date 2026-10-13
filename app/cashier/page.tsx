@@ -11,6 +11,7 @@ export default async function CashierPage({
   return (
     <CashierTouch
       staffName={session.name}
+      role={session.role}
       error={query.error}
       ok={query.ok}
       query={query.q}

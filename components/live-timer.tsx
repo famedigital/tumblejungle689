@@ -45,7 +45,7 @@ function paintClock(node: HTMLElement, leftMs: number) {
   node.dataset.wide = text.length > 5 ? "1" : "0";
 }
 
-export function MiniRing({ end, spanMin }: { end: string; spanMin: number }) {
+export function MiniRing({ end, spanMin, asOf }: { end: string; spanMin: number; asOf?: number }) {
   const arc = useRef<SVGCircleElement>(null);
   const label = useRef<HTMLSpanElement>(null);
 
@@ -53,7 +53,7 @@ export function MiniRing({ end, spanMin }: { end: string; spanMin: number }) {
     const endMs = new Date(end).getTime();
     const span = Math.max(spanMin, 1) * 60_000;
     const length = 2 * Math.PI * 16;
-    return onTick((now) => {
+    const paint = (now: number) => {
       const left = endMs - now;
       const remain = left < 0 ? 1 : Math.min(1, Math.max(0, left / span));
       const phase = left < 0 ? "over" : left <= 120_000 ? "warn" : "ok";
@@ -65,8 +65,13 @@ export function MiniRing({ end, spanMin }: { end: string; spanMin: number }) {
         const host = label.current.closest("[data-hold]");
         if (host instanceof HTMLElement && host.dataset.alarm !== phase) host.dataset.alarm = phase;
       }
-    });
-  }, [end, spanMin]);
+    };
+    if (asOf) {
+      paint(asOf);
+      return;
+    }
+    return onTick(paint);
+  }, [end, spanMin, asOf]);
 
   return (
     <span className="live-mini">
@@ -199,6 +204,43 @@ export function GlowTimer({ end, spanMin, until }: { end: string; spanMin: numbe
         <em ref={captionRef}>On time</em>
         {until ? <small>until {until}</small> : null}
       </p>
+    </div>
+  );
+}
+
+export function BarTimer({ end, spanMin, until }: { end: string; spanMin: number; until?: string }) {
+  const fillRef = useRef<HTMLSpanElement>(null);
+  const labelRef = useRef<HTMLSpanElement>(null);
+  const captionRef = useRef<HTMLElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const endMs = new Date(end).getTime();
+    const span = Math.max(spanMin, 1) * 60_000;
+    return onTick((now) => {
+      const left = endMs - now;
+      const phase = phaseOf(left);
+      const remain = phase === "over" ? 1 : Math.min(1, Math.max(0, left / span));
+      if (fillRef.current) {
+        fillRef.current.style.transform = `scaleX(${remain})`;
+        fillRef.current.dataset.phase = phase;
+      }
+      if (labelRef.current) paintClock(labelRef.current, left);
+      if (captionRef.current) captionRef.current.textContent = phase === "over" ? "Overtime" : phase === "warn" ? "Ending" : "On time";
+      if (wrapRef.current) wrapRef.current.dataset.phase = phase;
+    });
+  }, [end, spanMin]);
+
+  return (
+    <div className="live-bar" ref={wrapRef} data-phase="ok">
+      <div className="live-bar-top">
+        <span ref={labelRef}>0:00</span>
+        <em ref={captionRef}>On time</em>
+      </div>
+      <div className="live-bar-track" aria-hidden>
+        <span ref={fillRef} />
+      </div>
+      {until ? <small>until {until}</small> : null}
     </div>
   );
 }

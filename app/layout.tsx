@@ -14,6 +14,7 @@ const heading = Fraunces({
 
 export const metadata: Metadata = {
   title: "Tumble Jungle",
+  applicationName: "PlayTab",
   description: "Indoor playground, cafe, and restaurant in Changjiji, Thimphu.",
 };
 

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { logoutAction } from "@/app/actions";
+import { PlaytabCredit, PlaytabMark } from "@/components/playtab-mark";
 import { Button } from "@/components/ui/button";
 import { can, type Role } from "@/lib/types";
 
@@ -31,7 +32,8 @@ export function StaffShell({
     <div className={candy ? "candy min-h-full" : "min-h-full bg-background"}>
       <header className="no-print sticky top-0 z-10 border-b bg-card/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-4 py-3">
-          <Link href="/" className="font-heading text-lg text-primary">
+          <Link href="/" className="inline-flex items-center gap-2 font-heading text-lg text-primary">
+            <PlaytabMark size={32} />
             Tumble Jungle
           </Link>
           <nav className="flex flex-wrap gap-1">
@@ -64,6 +66,7 @@ export function StaffShell({
       <main className="mx-auto max-w-6xl space-y-6 px-4 py-6">
         <h1 className="font-heading text-4xl">{title}</h1>
         {children}
+        <PlaytabCredit className="text-muted-foreground" />
       </main>
     </div>
   );

@@ -16,6 +16,10 @@ import { canFloorDrop, canLeaveOnTime, isPlayVisit, playIsOvertime } from "@/lib
 
 type Filter = "all" | "ending" | "over";
 
+function clockOf(visit: VisitView, now: number) {
+  return visit.leftAt ? new Date(visit.leftAt).getTime() : now;
+}
+
 export function HoldSheet({
   visits,
   now,
@@ -49,11 +53,11 @@ export function HoldSheet({
 
   const rows = useMemo(() => {
     return visits
-      .map((visit) => ({ visit, left: minutesLeft(visit.paidUntil, now) }))
-      .filter(({ visit, left }) => {
+      .map((visit) => ({ visit, left: minutesLeft(visit.paidUntil, clockOf(visit, now)), held: Boolean(visit.leftAt) }))
+      .filter(({ visit, left, held }) => {
         const playing = isPlayVisit(visit);
-        if (filter === "over" && (!playing || left >= 0)) return false;
-        if (filter === "ending" && (!playing || left < 0 || left > 5)) return false;
+        if (filter === "over" && (!playing || held || left >= 0)) return false;
+        if (filter === "ending" && (!playing || held || left < 0 || left > 5)) return false;
         if (!needle) return true;
         const hay = `${visit.phone} ${visit.code} ${visit.guardianName}`.toLowerCase().replace(/\s/g, "");
         return hay.includes(needle);
@@ -65,10 +69,10 @@ export function HoldSheet({
       });
   }, [visits, now, filter, needle]);
 
-  const overdue = visits.filter((visit) => isPlayVisit(visit) && minutesLeft(visit.paidUntil, now) < 0).length;
+  const overdue = visits.filter((visit) => isPlayVisit(visit) && !visit.leftAt && minutesLeft(visit.paidUntil, now) < 0).length;
   const ending = visits.filter((visit) => {
     const left = minutesLeft(visit.paidUntil, now);
-    return isPlayVisit(visit) && left >= 0 && left <= 5;
+    return isPlayVisit(visit) && !visit.leftAt && left >= 0 && left <= 5;
   }).length;
   const selected = rows.find((row) => row.visit.id === selectedId) ?? rows[0] ?? null;
 
@@ -95,7 +99,7 @@ export function HoldSheet({
         setSelectedId(rows[Math.max(0, index - 1)].visit.id);
       } else if (event.key === "Delete" && selected) {
         event.preventDefault();
-        const over = playIsOvertime(selected.visit, now);
+        const over = playIsOvertime(selected.visit, clockOf(selected.visit, now));
         if (over) {
           setGate({ id: selected.visit.id, mode: "over" });
           return;
@@ -162,9 +166,10 @@ export function HoldSheet({
           <p className="cash-hint">{visits.length === 0 ? "No one is on hold." : "No one matches."}</p>
         ) : (
           <ul className="hold-list">
-            {rows.map(({ visit, left }) => {
+            {rows.map(({ visit, left, held }) => {
               const playing = isPlayVisit(visit);
-              const over = playing && left < 0;
+              const over = playing && !held && left < 0;
+              const clock = clockOf(visit, now);
               return (
               <li
                 key={visit.id}
@@ -175,24 +180,32 @@ export function HoldSheet({
               >
                 {onOpen ? (
                   <button type="button" onClick={() => onOpen(visit)}>
-                    {playing ? <MiniRing end={visit.paidUntil} spanMin={playSpanMinutes(visit.blocks)} /> : <span className="text-xs text-muted-foreground">Bill</span>}
+                    {playing ? (
+                      <MiniRing end={visit.paidUntil} spanMin={playSpanMinutes(visit.blocks)} asOf={held ? clock : undefined} />
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Bill</span>
+                    )}
                     <span>
                       <strong>{playing ? formatPhone(visit.phone) : tableLabel(visit.tableNo)}</strong>
                       <small>
                         {playing
-                          ? `${visit.childCount} ${visit.childCount === 1 ? "child" : "children"} · ${visit.code}`
+                          ? `${held ? "Left · pay held" : `${visit.childCount} ${visit.childCount === 1 ? "child" : "children"}`} · ${visit.code}`
                           : `${visit.lines.reduce((sum, line) => sum + line.qty, 0)} items · ${visit.code}`}
                       </small>
                     </span>
                   </button>
                 ) : (
                 <Link href={`${desk}?q=${visit.code}`} aria-current={visit.id === currentId ? "page" : undefined}>
-                  {playing ? <MiniRing end={visit.paidUntil} spanMin={playSpanMinutes(visit.blocks)} /> : <span className="text-xs text-muted-foreground">Bill</span>}
+                  {playing ? (
+                    <MiniRing end={visit.paidUntil} spanMin={playSpanMinutes(visit.blocks)} asOf={held ? clock : undefined} />
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Bill</span>
+                  )}
                   <span>
                     <strong>{playing ? formatPhone(visit.phone) : tableLabel(visit.tableNo)}</strong>
                     <small>
                       {playing
-                        ? `${visit.childCount} ${visit.childCount === 1 ? "child" : "children"} · ${visit.code}`
+                        ? `${held ? "Left · pay held" : `${visit.childCount} ${visit.childCount === 1 ? "child" : "children"}`} · ${visit.code}`
                         : `${visit.lines.reduce((sum, line) => sum + line.qty, 0)} items · ${visit.code}`}
                     </small>
                   </span>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { JournalWatch } from "@/components/journal-watch";
+import { PlaytabCredit } from "@/components/playtab-mark";
 import { formatNu } from "@/lib/format";
 import { isPoleHello, isPoleJournal, isPolePayload, poleHello, poleReadLast, POLE_CHANNEL, type PolePayload } from "@/lib/pole";
 
@@ -104,6 +105,7 @@ export function CustomerDisplay({ journalScan }: { journalScan: boolean }) {
           </aside>
         </div>
       )}
+      <PlaytabCredit className="px-6 pb-4 text-muted-foreground sm:px-8" />
     </main>
   );
 }

@@ -196,10 +196,7 @@ export function ensureTillSchema(): Promise<boolean> {
   if (!schemaTask) {
     schemaTask = (async () => {
       const current = await setting(SCHEMA_KEY);
-      if (current === "1") {
-        schemaReady = true;
-        return true;
-      }
+      if (current !== "1" && current !== "2") {
       await query().exec("ALTER TABLE visits ADD COLUMN IF NOT EXISTS client_key text");
       await query().exec("ALTER TABLE tab_lines ADD COLUMN IF NOT EXISTS client_key text");
       await query().exec(
@@ -229,7 +226,14 @@ export function ensureTillSchema(): Promise<boolean> {
       );
       await query().exec("ALTER TABLE payments ADD COLUMN IF NOT EXISTS journal_ref text");
       await query().exec("ALTER TABLE payments ADD COLUMN IF NOT EXISTS pay_bank text");
-      await putSetting(SCHEMA_KEY, "1");
+      }
+      await query().exec("ALTER TABLE visits ADD COLUMN IF NOT EXISTS left_at timestamptz");
+      await query().exec("ALTER TABLE visits ADD COLUMN IF NOT EXISTS receipt_no integer");
+      await query().exec(
+        "CREATE UNIQUE INDEX IF NOT EXISTS visits_receipt_no_uidx ON visits (receipt_no) WHERE receipt_no IS NOT NULL",
+      );
+      await query().exec("ALTER TABLE tab_lines ADD COLUMN IF NOT EXISTS delivered_qty integer NOT NULL DEFAULT 0");
+      await putSetting(SCHEMA_KEY, "2");
       schemaReady = true;
       return true;
     })().catch((error) => {

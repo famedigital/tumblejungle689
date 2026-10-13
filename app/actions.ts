@@ -1,10 +1,12 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { clearSession, findStaffBySecret, requireArea, setSession } from "@/lib/auth";
+import { clearSession, findStaffBySecret, getSession, requireArea, setSession } from "@/lib/auth";
 import {
   addCategory,
   addMenuItem,
+  counterCategory,
+  listMenu,
   addPlayBlock,
   addStaff,
   addTabItem,
@@ -22,6 +24,8 @@ import {
   voidVisit,
   waiveOvertime,
   saveBank,
+  saveCharges,
+  saveExtraPerMin,
   saveRates,
   saveReceipt,
   saveKot,
@@ -33,7 +37,7 @@ import {
   updateMenuItem,
 } from "@/lib/domain";
 import { bankFromJournal, knownBank } from "@/lib/pay-banks";
-import type { Outlet, PayMethod, Role } from "@/lib/types";
+import { can, type Outlet, type PayMethod, type Role } from "@/lib/types";
 
 function isRedirect(error: unknown): boolean {
   return (
@@ -329,6 +333,36 @@ export async function saveVenueAction(formData: FormData) {
   });
 }
 
+export async function openBackOfficeAction(formData: FormData) {
+  const owner = await findStaffBySecret(text(formData, "secret"));
+  if (!owner || owner.role !== "admin") redirect("/cashier?error=Owner%20PIN%20was%20not%20recognised.");
+  await setSession({ staffId: owner.id, name: owner.name, role: owner.role });
+  redirect("/admin");
+}
+
+export async function addCounterDish(input: { name: string; priceNu: number; outlet: Outlet; secret: string }) {
+  const session = await getSession();
+  if (!session || !can(session.role, "cashier")) throw new Error("Sign in again.");
+  if (session.role !== "admin") {
+    const owner = await findStaffBySecret(input.secret);
+    if (!owner || owner.role !== "admin") throw new Error("Owner PIN was not recognised.");
+  }
+  const categoryId = await counterCategory(input.outlet);
+  const id = await addMenuItem({ categoryId, name: input.name, priceNu: input.priceNu });
+  const item = (await listMenu(input.outlet, true)).find((row) => row.id === id);
+  if (!item) throw new Error("The dish was not saved.");
+  return item;
+}
+
+export async function saveExtraPerMinAction(formData: FormData) {
+  const path = text(formData, "back") === "/admin/products" ? "/admin/products" : "/admin";
+  await run(path, undefined, async () => {
+    await requireArea("admin");
+    await saveExtraPerMin(Number(formData.get("amountNu") ?? 0));
+    finish(formData, "/admin", "Extra time saved", "extra");
+  });
+}
+
 export async function saveRatesAction(formData: FormData) {
   const path = text(formData, "back") === "/admin/products" ? "/admin/products" : "/admin";
   await run(path, undefined, async () => {
@@ -359,6 +393,19 @@ export async function saveJournalScanAction(formData: FormData) {
     await requireArea("admin");
     await saveJournalScan(text(formData, "journalScan") === "1");
     finish(formData, "/admin", "Journal scan saved");
+  });
+}
+
+export async function saveChargesAction(formData: FormData) {
+  await run("/admin", undefined, async () => {
+    await requireArea("admin");
+    await saveCharges({
+      scOn: text(formData, "scOn") === "1",
+      scPercent: Number(formData.get("scPercent") ?? 0),
+      gstOn: text(formData, "gstOn") === "1",
+      gstPercent: Number(formData.get("gstPercent") ?? 0),
+    });
+    redirect("/admin?ok=Service%20charge%20and%20GST%20saved");
   });
 }
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
-const LETTERS = ["h", "l", "s", "n"] as const;
+const LETTERS = ["h", "l", "s", "n", "w"] as const;
 export type AltLetter = (typeof LETTERS)[number];
 
 const alt = { held: false, fired: false, until: 0 };
@@ -13,9 +13,10 @@ const GLYPHS: Record<AltLetter, readonly string[]> = {
   l: ["¬", "ﬂ", "Ò", "ł"],
   s: ["ß", "∫", "Í"],
   n: ["ñ", "ń", "ŉ"],
+  w: ["∑", "ŵ"],
 };
 
-const CODE: Record<AltLetter, string> = { h: "KeyH", l: "KeyL", s: "KeyS", n: "KeyN" };
+const CODE: Record<AltLetter, string> = { h: "KeyH", l: "KeyL", s: "KeyS", n: "KeyN", w: "KeyW" };
 
 function isAltKey(event: KeyboardEvent): boolean {
   return event.key === "Alt" || event.code === "AltLeft" || event.code === "AltRight" || event.key === "AltGraph";
@@ -94,6 +95,12 @@ export function takeAltText(data: string): AltLetter | null {
   return null;
 }
 
+function releaseAlt() {
+  alt.held = false;
+  alt.fired = false;
+  alt.until = 0;
+}
+
 export function useTillHotkeys(onLetter: (letter: AltLetter) => void) {
   const handler = useRef(onLetter);
   handler.current = onLetter;
@@ -111,10 +118,13 @@ export function useTillHotkeys(onLetter: (letter: AltLetter) => void) {
     window.addEventListener("keydown", onKey, true);
     window.addEventListener("keyup", onKey, true);
     window.addEventListener("beforeinput", onBefore, true);
+    window.addEventListener("blur", releaseAlt);
     return () => {
       window.removeEventListener("keydown", onKey, true);
       window.removeEventListener("keyup", onKey, true);
       window.removeEventListener("beforeinput", onBefore, true);
+      window.removeEventListener("blur", releaseAlt);
+      releaseAlt();
     };
   }, []);
 }

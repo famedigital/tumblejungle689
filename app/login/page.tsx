@@ -1,5 +1,6 @@
 import { loginAction } from "@/app/actions";
 import { Flash } from "@/components/flash";
+import { PlaytabCredit, PlaytabMark } from "@/components/playtab-mark";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,7 +18,8 @@ export default async function LoginPage({
   return (
     <main className="mx-auto flex min-h-full w-full max-w-md flex-col justify-center gap-6 px-4 py-16">
       <div>
-        <p className="text-sm uppercase tracking-[0.16em] text-primary">Staff</p>
+        <PlaytabMark size={72} label />
+        <p className="mt-4 text-sm uppercase tracking-[0.16em] text-primary">Staff</p>
         <h1 className="font-heading text-4xl">{settings.venueName}</h1>
         <p className="mt-2 text-sm text-muted-foreground">Sign in on this computer. Nothing is sent to a cloud account.</p>
       </div>
@@ -31,6 +33,7 @@ export default async function LoginPage({
           Sign in
         </Button>
       </form>
+      <PlaytabCredit className="text-muted-foreground" />
     </main>
   );
 }

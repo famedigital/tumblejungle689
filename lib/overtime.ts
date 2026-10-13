@@ -13,37 +13,36 @@ export type OvertimeQuote = {
   blocks: OvertimeBlock[];
 };
 
-export function quoteOvertime(paidUntil: string, rates: Rate[], now = Date.now()): OvertimeQuote | null {
+export function playBasis(rates: Rate[]): Rate | null {
+  return rates.find((rate) => rate.minutes === 30) ?? [...rates].filter((rate) => rate.minutes > 0).sort((a, b) => a.minutes - b.minutes)[0] ?? null;
+}
+
+/** Whole-ngultrum charge for extra minutes. A set per-minute price wins. Otherwise the 30 min price is split by the minute, and the total is rounded. */
+export function extraCharge(extraMinutes: number, rates: Rate[], perMinNu = 0): number {
+  const minutes = Math.max(0, Math.round(extraMinutes));
+  if (minutes === 0) return 0;
+  if (perMinNu > 0) return minutes * Math.round(perMinNu);
+  const base = playBasis(rates);
+  if (!base) return 0;
+  return Math.round((minutes * base.amountNu) / base.minutes);
+}
+
+export function quoteOvertime(paidUntil: string, rates: Rate[], now = Date.now(), perMinNu = 0): OvertimeQuote | null {
   const lateMs = now - new Date(paidUntil).getTime();
   if (lateMs <= 0) return null;
   const extraMinutes = Math.ceil(lateMs / 60_000);
-  const sorted = [...rates]
-    .filter((rate) => rate.minutes > 0 && rate.amountNu >= 0)
-    .sort((a, b) => a.minutes - b.minutes);
-  if (sorted.length === 0) {
-    return { extraMinutes, billedMinutes: 0, amountNu: 0, blocks: [] };
-  }
-  const blocks: OvertimeBlock[] = [];
-  let left = extraMinutes;
-  const longest = sorted[sorted.length - 1]!;
-  while (left > longest.minutes) {
-    blocks.push({ minutes: longest.minutes, amountNu: longest.amountNu });
-    left -= longest.minutes;
-  }
-  const fit = sorted.find((rate) => rate.minutes >= left) ?? longest;
-  blocks.push({ minutes: fit.minutes, amountNu: fit.amountNu });
+  const amountNu = extraCharge(extraMinutes, rates, perMinNu);
+  const blocks: OvertimeBlock[] = amountNu > 0 ? [{ minutes: extraMinutes, amountNu }] : [];
   return {
     extraMinutes,
-    billedMinutes: blocks.reduce((sum, block) => sum + block.minutes, 0),
-    amountNu: blocks.reduce((sum, block) => sum + block.amountNu, 0),
+    billedMinutes: extraMinutes,
+    amountNu,
     blocks,
   };
 }
 
 export function overtimeSentence(quote: OvertimeQuote): string {
   const stayed = `Stayed ${quote.extraMinutes} min past their play time.`;
-  if (quote.blocks.length === 0) return `${stayed} Set a play rate to charge this extra time.`;
-  if (quote.billedMinutes === quote.extraMinutes) return `${stayed} Extra time ${formatNu(quote.amountNu)}.`;
-  const as = quote.blocks.map((block) => `${block.minutes} min`).join(" + ");
-  return `${stayed} Charged as ${as}, ${formatNu(quote.amountNu)}.`;
+  if (quote.amountNu <= 0) return `${stayed} Set a play price before this extra time can be charged.`;
+  return `${stayed} Extra time ${formatNu(quote.amountNu)}, by the minute.`;
 }

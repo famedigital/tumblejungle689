@@ -15,6 +15,7 @@ export type Settings = {
   playBlurb: string;
   eatBlurb: string;
   rates: Rate[];
+  extraPerMinNu: number;
   ratesAreSamples: boolean;
   menuIsSample: boolean;
   bankPayload: string;
@@ -26,6 +27,11 @@ export type Settings = {
   receiptThanks: string;
   receiptRules: string;
   journalScan: boolean;
+  nextReceipt: number;
+  scOn: boolean;
+  scPercent: number;
+  gstOn: boolean;
+  gstPercent: number;
 };
 
 export type MenuItem = {
@@ -58,6 +64,7 @@ export type TabLine = {
   outlet: Outlet;
   paid: boolean;
   firedQty: number;
+  deliveredQty: number;
 };
 
 export type PaymentRow = {
@@ -96,8 +103,10 @@ export type VisitView = {
   status: "open" | "settled";
   createdAt: string;
   paidUntil: string;
+  leftAt: string | null;
   closedAt: string | null;
   tableNo: string;
+  receiptNo: number | null;
   blocks: PlayBlock[];
   lines: TabLine[];
   payments: PaymentRow[];

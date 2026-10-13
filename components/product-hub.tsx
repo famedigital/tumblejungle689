@@ -1,10 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { addCategoryAction, addMenuItemAction, saveRatesAction, updateMenuItemAction } from "@/app/actions";
+import { addCategoryAction, addMenuItemAction, saveExtraPerMinAction, saveRatesAction, updateMenuItemAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatNu } from "@/lib/format";
+import { extraCharge, playBasis } from "@/lib/overtime";
 import type { MenuItem, Outlet, Rate } from "@/lib/types";
 
 type Kind = "all" | "play" | "cafe" | "restaurant";
@@ -20,6 +21,7 @@ type Row = {
 
 export function ProductHub({
   rates,
+  extraPerMinNu,
   menu,
   categories,
   soldDishes,
@@ -29,6 +31,7 @@ export function ProductHub({
   menuIsSample,
 }: {
   rates: Rate[];
+  extraPerMinNu: number;
   menu: MenuItem[];
   categories: { id: number; name: string; outlet: Outlet }[];
   soldDishes: Record<number, number>;
@@ -42,6 +45,16 @@ export function ProductHub({
   const [open, setOpen] = useState(desk ?? "");
 
   const rows = useMemo(() => {
+    const extra: Row[] = [
+      {
+        desk: "extra",
+        kind: "play",
+        title: "Extra time",
+        detail: extraPerMinNu > 0 ? `Nu ${extraPerMinNu} a minute` : "From the 30 min price, by the minute",
+        price: `${formatNu(extraCharge(1, rates, extraPerMinNu))} / min`,
+        off: false,
+      },
+    ];
     const play: Row[] = rates.map((rate) => ({
       desk: `rate-${rate.minutes}`,
       kind: "play",
@@ -59,12 +72,12 @@ export function ProductHub({
       off: !item.active,
     }));
     const needle = query.trim().toLowerCase();
-    return [...play, ...food].filter((row) => {
+    return [...extra, ...play, ...food].filter((row) => {
       if (kind !== "all" && row.kind !== kind) return false;
       if (!needle) return true;
       return `${row.title} ${row.detail}`.toLowerCase().includes(needle);
     });
-  }, [rates, menu, kind, query]);
+  }, [rates, extraPerMinNu, menu, kind, query]);
 
   const rateIndex = rates.findIndex((rate) => `rate-${rate.minutes}` === open);
   const item = menu.find((row) => `item-${row.id}` === open);
@@ -137,7 +150,9 @@ export function ProductHub({
       </section>
 
       <aside className="space-y-4 lg:sticky lg:top-24">
-        {rateIndex >= 0 ? (
+        {open === "extra" ? (
+          <ExtraDesk key={extraPerMinNu} rates={rates} extraPerMinNu={extraPerMinNu} />
+        ) : rateIndex >= 0 ? (
           <RateDesk key={rates[rateIndex].minutes} rates={rates} index={rateIndex} sold={soldPlay[rates[rateIndex].minutes] ?? 0} />
         ) : item ? (
           <ItemDesk key={item.id} item={item} categories={categories} sold={soldDishes[item.id] ?? 0} />
@@ -152,6 +167,41 @@ export function ProductHub({
         <NewCategory />
       </aside>
     </div>
+  );
+}
+
+function ExtraDesk({ rates, extraPerMinNu }: { rates: Rate[]; extraPerMinNu: number }) {
+  const basis = playBasis(rates);
+  const [value, setValue] = useState(extraPerMinNu > 0 ? String(extraPerMinNu) : "");
+  const setNu = Math.max(0, Math.round(Number(value) || 0));
+  return (
+    <section className="space-y-3 rounded-3xl bg-card p-5 ring-1 ring-foreground/10">
+      <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Extra time</p>
+      <h2 className="font-heading text-2xl">Per minute</h2>
+      <p className="text-sm text-muted-foreground">
+        {basis
+          ? `${basis.minutes} min is ${formatNu(basis.amountNu)}. Leave this blank to follow that price. Two extra minutes is ${formatNu(extraCharge(2, rates, 0))}.`
+          : "Add a 30 minute play price first."}
+      </p>
+      <form action={saveExtraPerMinAction} className="grid gap-3">
+        <input type="hidden" name="back" value="/admin/products" />
+        <input type="hidden" name="amountNu" value={setNu} />
+        <label className="space-y-1 text-sm">
+          Nu per extra minute
+          <Input
+            inputMode="numeric"
+            value={value}
+            placeholder="Follow the 30 min price"
+            onChange={(event) => setValue(event.target.value.replace(/\D/g, "").slice(0, 3))}
+            className="h-11"
+          />
+        </label>
+        <p className="text-sm text-muted-foreground">One extra minute is {formatNu(extraCharge(1, rates, setNu))}.</p>
+        <Button type="submit" className="h-11">
+          Save extra time
+        </Button>
+      </form>
+    </section>
   );
 }
 

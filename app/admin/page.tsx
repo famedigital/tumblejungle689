@@ -5,6 +5,7 @@ import {
   setSecretAction,
 } from "@/app/actions";
 import { AdminTabs } from "@/components/admin-tabs";
+import { ChargeForm } from "@/components/charge-form";
 import { FloorBoard } from "@/components/floor-board";
 import { Flash } from "@/components/flash";
 import { StaffShell } from "@/components/staff-shell";
@@ -52,6 +53,19 @@ export default async function AdminPage({
                     Save public page
                   </Button>
                 </form>
+              </section>
+            ),
+          },
+          {
+            id: "charges",
+            label: "Charges",
+            panel: (
+              <section className={panel}>
+                <h2 className="font-heading text-2xl">Service charge and GST</h2>
+                <p className="text-sm text-muted-foreground">
+                  Turn each charge on or off, and set the percent. Off charges stay off the bill. GST uses the bill after service charge.
+                </p>
+                <ChargeForm scOn={settings.scOn} scPercent={settings.scPercent} gstOn={settings.gstOn} gstPercent={settings.gstPercent} />
               </section>
             ),
           },

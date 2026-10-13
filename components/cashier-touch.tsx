@@ -2,27 +2,31 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import Link from "next/link";
-import { logoutAction } from "@/app/actions";
+import { Camera, HardDrive, Lock, MessageCircle, Monitor, PersonStanding, Plus, RotateCcw, Sticker, Users } from "lucide-react";
+import { addCounterDish, logoutAction, openBackOfficeAction } from "@/app/actions";
 import { BankPick } from "@/components/bank-pick";
 import { Receipt } from "@/components/receipt";
 import { PassCard } from "@/components/pass-card";
 import { PrintPortal } from "@/components/print-portal";
 import { HoldSheet } from "@/components/hold-sheet";
 import { KotSlip } from "@/components/kot-slip";
-import { GlowTimer, MiniRing, playSpanMinutes } from "@/components/live-timer";
+import { GlowTimer, BarTimer, MiniRing, playSpanMinutes } from "@/components/live-timer";
 import { TimeUpSheet } from "@/components/timeup-sheet";
 import { RecentSheet } from "@/components/recent-sheet";
 import { Scanner } from "@/components/scanner";
 import { TenderSheet, type TenderMethod } from "@/components/tender-sheet";
 import { TillShell } from "@/components/till-shell";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardAction, CardDescription, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PayQr } from "@/components/pay-qr";
-import { formatNu, formatPhone, formatWhen, minutesLeft, tableLabel } from "@/lib/format";
+import { chargeRatesOf, formatRate, quoteCharges } from "@/lib/charges";
+import { formatNu, formatClock, formatPhone, formatWhen, minutesLeft, tableLabel, tableTone } from "@/lib/format";
 import { bankFromJournal } from "@/lib/pay-banks";
 import { submitOpenTender, useTillHotkeys } from "@/lib/hotkeys";
 import { buildDynamicEmv, staticFromSettings } from "@/lib/emv";
@@ -31,13 +35,26 @@ import { isPoleHello, polePost, POLE_CHANNEL, type PoleLine, type PolePayload } 
 import { readSentSnapshot, rememberChat, sentIdsFrom, subscribeSent, emptySentSnapshot, whatsAppChat } from "@/lib/whatsapp";
 import { lineKeyOf, localCode, visitKey, type TillOp } from "@/lib/till-op";
 import { useTillBook } from "@/lib/use-till-book";
-import type { MenuItem, Outlet, Rate, RecentTxn, VisitView } from "@/lib/types";
+import type { MenuItem, Outlet, Rate, RecentTxn, Role, VisitView } from "@/lib/types";
 
 type KotLine = { id: number; lineKey: string; name: string; qty: number; outlet: Outlet; note: string };
 type Ticket = { id: number; kind: "bot" | "kot"; tableNo: string; when: string; lines: KotLine[] };
-type CheckStep = "phone" | "children" | "pay" | "journal" | "adding";
+type VisitHit = {
+  code: string;
+  phone: string;
+  status: "open" | "settled";
+  childCount: number;
+  tableNo: string;
+  createdAt: string;
+  dueNu: number;
+  kotQty: number;
+  botQty: number;
+};
+type CheckStep = "kind" | "time" | "phone" | "children" | "pay" | "journal" | "adding";
 type CheckDraft = {
   step: CheckStep;
+  kind: "walkin" | "play";
+  minutes: number;
   phone: string;
   children: string;
   method: "cash" | "bank_qr";
@@ -48,8 +65,8 @@ type CheckDraft = {
   addToCount?: number;
 };
 
-function freshCheck(): CheckDraft {
-  return { step: "phone", phone: "", children: "1", method: "cash", journal: "", bank: "" };
+function freshCheck(minutes = 30): CheckDraft {
+  return { step: "kind", kind: "play", minutes, phone: "", children: "1", method: "cash", journal: "", bank: "" };
 }
 
 function unsentFood(visit: VisitView): KotLine[] {
@@ -94,6 +111,7 @@ let alarmCtx: AudioContext | null = null;
 
 export function CashierTouch({
   staffName,
+  role,
   error: pageError,
   ok,
   query,
@@ -104,6 +122,7 @@ export function CashierTouch({
   startNew = false,
 }: {
   staffName: string;
+  role: Role;
   error?: string;
   ok?: string;
   query?: string;
@@ -118,9 +137,9 @@ export function CashierTouch({
   const menu = book.base.menu;
   const open = book.open;
   const recent = book.base.recent;
-  const todayNu = book.base.todayNu;
   const playNu = book.base.playNu;
-  const foodNu = book.base.foodNu;
+  const kotNu = book.base.kotNu ?? 0;
+  const botNu = book.base.botNu ?? 0;
   const visit = book.visit;
   const venueName = book.base.venueName;
   const bankAccount = book.base.bankAccount;
@@ -152,6 +171,16 @@ export function CashierTouch({
     | { kind: "checkin"; phone: string; name: string; children: number; minutes: number; amountNu: number }
   >(null);
   const [tenderMethod, setTenderMethod] = useState<TenderMethod>("bank_qr");
+  const [paidSlip, setPaidSlip] = useState<{
+    code: string;
+    phone: string;
+    when: string;
+    lines: { name: string; qty: number; amount: number; paid: boolean }[];
+    cash: number;
+    bank: number;
+    total: number;
+    receiptNo: number | null;
+  } | null>(null);
   const [scanNu, setScanNu] = useState(0);
   const [recentOpen, setRecentOpen] = useState(false);
   const [recentIndex, setRecentIndex] = useState(0);
@@ -173,11 +202,16 @@ export function CashierTouch({
   const [sendCheck, setSendCheck] = useState(false);
   const [boardAt, setBoardAt] = useState(0);
   const [tab, setTab] = useState("playing");
-  const playRate = rates.find((rate) => rate.minutes === 30) ?? rates[0] ?? null;
+  const [scanText, setScanText] = useState(query ?? "");
+  const [hits, setHits] = useState<VisitHit[]>([]);
+  const [hitAt, setHitAt] = useState(0);
+  const playRates = useMemo(() => [...rates].sort((a, b) => a.minutes - b.minutes), [rates]);
+  const playRate = playRates.find((rate) => rate.minutes === (check?.minutes ?? 30)) ?? playRates.find((rate) => rate.minutes === 30) ?? playRates[0] ?? null;
   const ranked = open
     .map((item) => {
       const walkIn = item.childCount === 0 && item.blocks.length === 0;
-      return { item, walkIn, left: walkIn ? Number.POSITIVE_INFINITY : minutesLeft(item.paidUntil, now) };
+      const held = Boolean(item.leftAt);
+      return { item, walkIn, held, left: walkIn || held ? Number.POSITIVE_INFINITY : minutesLeft(item.paidUntil, now) };
     })
     .sort((a, b) => a.left - b.left);
   const openVisit = visit?.status === "open" ? visit : null;
@@ -186,22 +220,34 @@ export function CashierTouch({
     .map((item) => (openVisit && item.id === openVisit.id ? openVisit : item))
     .filter((item) => item.childCount === 0 || item.lines.length > 0 || item.id === openVisit?.id);
   if (openVisit && !tickets.some((item) => item.id === openVisit.id)) tickets.unshift(openVisit);
-  const overtime = openVisit && !walkIn ? quoteOvertime(openVisit.paidUntil, rates, now) : null;
-  const due = openVisit
-    ? openVisit.dueNu - (openVisit.overtime?.amountNu ?? 0) + (overtime?.amountNu ?? 0)
-    : (visit?.dueNu ?? 0);
-  const childrenIn = open.reduce((sum, item) => sum + (item.childCount > 0 || item.blocks.length > 0 ? item.childCount : 0), 0);
-  const timeUp = ranked.filter((row) => !row.walkIn && row.left < 0).sort((a, b) => b.left - a.left);
+  const overtime =
+    openVisit && !walkIn
+      ? quoteOvertime(openVisit.paidUntil, rates, openVisit.leftAt ? new Date(openVisit.leftAt).getTime() : now, book.base.extraPerMinNu ?? 0)
+      : null;
+  const charges = chargeRatesOf(book.base);
+  const subtotal = openVisit
+    ? openVisit.blocks.filter((block) => !block.paid).reduce((sum, block) => sum + block.amountNu, 0) +
+      openVisit.lines.filter((line) => !line.paid).reduce((sum, line) => sum + line.amountNu, 0) +
+      (overtime?.amountNu ?? 0)
+    : 0;
+  const bill = quoteCharges(subtotal, charges);
+  const due = openVisit ? bill.dueNu : (visit?.dueNu ?? 0);
+  const chargeRows = [
+    bill.serviceNu > 0 ? { name: `S.C. ${formatRate(charges.scPercent)}%`, amount: bill.serviceNu } : null,
+    bill.gstNu > 0 ? { name: `GST ${formatRate(charges.gstPercent)}%`, amount: bill.gstNu } : null,
+  ].flatMap((row) => (row ? [row] : []));
+  const childrenIn = open.reduce((sum, item) => sum + (item.leftAt ? 0 : item.childCount > 0 || item.blocks.length > 0 ? item.childCount : 0), 0);
+  const timeUp = ranked.filter((row) => !row.walkIn && !row.held && row.left < 0).sort((a, b) => b.left - a.left);
   const overdue = timeUp.length;
-  const ending = ranked.filter((row) => !row.walkIn && row.left >= 0 && row.left <= 5).length;
+  const ending = ranked.filter((row) => !row.walkIn && !row.held && row.left >= 0 && row.left <= 5).length;
   const lookup = (query ?? "").trim();
-  const status = error || ok || (check ? "Enter moves on. Escape cancels." : openVisit ? `${walkIn ? tableLabel(openVisit.tableNo) : formatPhone(openVisit.phone)} is on this till` : lookup ? `No open play card for ${lookup}` : "Alt+N starts a new family. Alt+L opens the menu.");
+  const status = error || ok || (check ? (check.step === "kind" ? "Left and right choose walk-in or play. Enter continues." : check.step === "time" ? "Up and down choose the play time. Enter continues." : "Enter moves on. Escape cancels.") : openVisit ? `${walkIn ? tableLabel(openVisit.tableNo) : formatPhone(openVisit.phone)} is on this till` : lookup ? `No open play card for ${lookup}` : "Alt+N asks walk-in or play. Scan a ticket to add food to that family.");
   const extra = overtime ? overtimeSentence(overtime) : "";
   const poleRef = useRef<PolePayload | null>(null);
 
   useEffect(() => {
     const checkin = tender?.kind === "checkin" ? tender : null;
-    const family = check && playRate ? check : null;
+    const family = check && check.kind === "play" && check.step !== "kind" && playRate ? check : null;
     const familyNu = family ? playRate.amountNu : 0;
     const familyQr = Boolean(family && (family.step === "pay" || family.step === "journal") && family.method === "bank_qr" && familyNu > 0);
     const lines: PoleLine[] = openVisit
@@ -228,6 +274,7 @@ export function CashierTouch({
             amount: line.amountNu,
             paid: line.paid,
           })),
+          ...chargeRows.map((row) => ({ name: row.name, qty: 1, amount: row.amount, paid: false })),
         ]
       : family
         ? [{ name: `Play ${playRate.minutes} min`, qty: 1, amount: familyNu, paid: false }]
@@ -294,11 +341,9 @@ export function CashierTouch({
     };
   }, [visit?.code]);
 
-  const lineCount = openVisit?.lines.reduce((sum, line) => sum + line.qty, 0) ?? 0;
   useEffect(() => {
-    if (openVisit && (walkIn || openVisit.lines.length > 0)) setTab(openVisit.code);
-    else setTab("playing");
-  }, [openVisit?.code, lineCount, walkIn]);
+    if (!openVisit) setTab("playing");
+  }, [openVisit?.code]);
 
   useEffect(() => {
     if (quiet || overdue === 0) return;
@@ -322,6 +367,7 @@ export function CashierTouch({
     }
     if (letter === "s") saleRef.current();
     if (letter === "n") beginCheckIn();
+    if (letter === "w") beginWalkIn();
   });
 
   useEffect(() => {
@@ -361,6 +407,7 @@ export function CashierTouch({
         return;
       }
       if (event.key === "Escape") {
+        if (document.querySelector("[data-play-phone], [data-new-dish]")) return;
         if (check) setCheck(null);
         else if (timeUpOpen) setTimeUpOpen(false);
         else if (peopleOpen) setPeopleOpen(false);
@@ -369,6 +416,37 @@ export function CashierTouch({
         else setMenuOpen(false);
       }
       const typing = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
+      const onBoard = !typing && !check && !menuOpen && !recentOpen && !peopleOpen && !timeUpOpen && !askTable && !tender && tab === "playing" && ranked.length > 0;
+      if (onBoard && (event.key === "ArrowLeft" || event.key === "ArrowRight" || event.key === "ArrowUp" || event.key === "ArrowDown")) {
+        event.preventDefault();
+        const board = document.querySelector<HTMLElement>("[data-play-board]");
+        const columns = Math.max(1, board ? getComputedStyle(board).gridTemplateColumns.split(" ").filter(Boolean).length : 1);
+        const found = openVisit ? ranked.findIndex((row) => row.item.id === openVisit.id) : boardAt;
+        const at = found < 0 ? 0 : Math.min(found, ranked.length - 1);
+        let next = at;
+        const column = at % columns;
+        if (event.key === "ArrowRight" && column < columns - 1 && at + 1 < ranked.length) next = at + 1;
+        if (event.key === "ArrowLeft" && column > 0) next = at - 1;
+        if (event.key === "ArrowDown" && at + columns < ranked.length) next = at + columns;
+        if (event.key === "ArrowUp" && at - columns >= 0) next = at - columns;
+        if (next === at) {
+          const order = ["playing", ...tickets.map((item) => item.code)];
+          const tabIndex = Math.max(0, order.indexOf(tab));
+          const leavingBack = (event.key === "ArrowLeft" && at === 0) || (event.key === "ArrowUp" && at < columns);
+          const leavingForward = (event.key === "ArrowRight" && at === ranked.length - 1) || (event.key === "ArrowDown" && at + columns >= ranked.length);
+          if (!leavingBack && !leavingForward) return;
+          const dest = order[(tabIndex + (leavingForward ? 1 : -1) + order.length) % order.length] ?? "playing";
+          setTab(dest);
+          if (dest !== "playing") book.openBill(dest);
+          return;
+        }
+        setBoardAt(next);
+        book.openBill(ranked[next].item.code);
+        const card = document.querySelector<HTMLButtonElement>(`[data-board-card="${ranked[next].item.id}"]`);
+        card?.focus();
+        card?.scrollIntoView({ block: "nearest" });
+        return;
+      }
       if (!typing && !check && !menuOpen && !recentOpen && !peopleOpen && !timeUpOpen && !askTable && !tender && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
         const order = ["playing", ...tickets.map((item) => item.code)];
         const index = Math.max(0, order.indexOf(tab));
@@ -379,14 +457,13 @@ export function CashierTouch({
         if (next !== "playing") book.openBill(next);
         return;
       }
-      if (!typing && !check && !menuOpen && !recentOpen && !peopleOpen && !timeUpOpen && !askTable && !tender && tab === "playing" && ranked.length) {
-        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      if (onBoard) {
+        if (event.key === "Enter") {
+          const current = openVisit ? ranked.find((row) => row.item.id === openVisit.id) : ranked[Math.min(boardAt, ranked.length - 1)];
+          if (!current) return;
           event.preventDefault();
-          const current = openVisit ? ranked.findIndex((row) => row.item.id === openVisit.id) : boardAt;
-          const delta = event.key === "ArrowDown" ? 1 : -1;
-          const next = (Math.max(0, current) + delta + ranked.length) % ranked.length;
-          setBoardAt(next);
-          book.openBill(ranked[next].item.code);
+          setTab(current.item.code);
+          book.openBill(current.item.code);
           return;
         }
         if (event.key.toLowerCase() === "w") {
@@ -450,6 +527,21 @@ export function CashierTouch({
   }, [printReceipt]);
 
   useEffect(() => {
+    if (!paidSlip) return;
+    const timer = window.setTimeout(() => {
+      document.body.dataset.print = "receipt";
+      const done = () => {
+        delete document.body.dataset.print;
+        window.removeEventListener("afterprint", done);
+        setPaidSlip(null);
+      };
+      window.addEventListener("afterprint", done);
+      window.print();
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [paidSlip]);
+
+  useEffect(() => {
     setTableNo(visit?.tableNo ?? "");
   }, [visit?.id, visit?.tableNo]);
 
@@ -496,7 +588,17 @@ export function CashierTouch({
     });
     restTickets.current = jobs.slice(1);
     setTicket(jobs[0] ?? null);
-    if (!jobs[0] && due > 0) openTender();
+  }
+
+  function printTickets() {
+    if (!openVisit) return;
+    if (askTable) {
+      confirmTable();
+      return;
+    }
+    if (!unsentFood(openVisit).length) return;
+    setTableError("");
+    setAskTable(true);
   }
 
   function beginSale() {
@@ -505,10 +607,7 @@ export function CashierTouch({
       submitOpenTender();
       return;
     }
-    if (!openVisit) {
-      beginCheckIn();
-      return;
-    }
+    if (!openVisit) return;
     if (askTable) {
       confirmTable();
       return;
@@ -516,16 +615,29 @@ export function CashierTouch({
     setMenuOpen(false);
     setPeopleOpen(false);
     setRecentOpen(false);
+    if ((openVisit.childCount > 0 || openVisit.blocks.length > 0) && !openVisit.leftAt) {
+      book.commit({
+        id: crypto.randomUUID(),
+        at: new Date().toISOString(),
+        kind: "holdPlay",
+        visitKey: visitKey(openVisit),
+      });
+      return;
+    }
     if (unsentFood(openVisit).length) {
       setTableError("");
       setAskTable(true);
       return;
     }
-    if (due > 0) {
-      openTender();
-      return;
+    if (due > 0) openTender();
+    else if (!overtime && (openVisit.childCount > 0 || openVisit.blocks.length > 0)) {
+      book.commit({
+        id: crypto.randomUUID(),
+        at: new Date().toISOString(),
+        kind: "leave",
+        visitKey: visitKey(openVisit),
+      });
     }
-    setCheck(freshCheck());
   }
 
   saleRef.current = beginSale;
@@ -565,7 +677,85 @@ export function CashierTouch({
     setRecentOpen(false);
     setAskTable(false);
     setTender(null);
-    setCheck(freshCheck());
+    const minutes = rates.find((rate) => rate.minutes === 30)?.minutes ?? rates[0]?.minutes ?? 30;
+    setCheck(freshCheck(minutes));
+  }
+
+  function openScanned(raw: string) {
+    setScanText("");
+    setHits([]);
+    void book.recall(raw).then((found) => {
+      if (!found) return;
+      if (found.status !== "open") {
+        window.location.href = `/receipt/${found.code}`;
+        return;
+      }
+      setCheck(null);
+      setTender(null);
+      setAskTable(false);
+      setPeopleOpen(false);
+      setRecentOpen(false);
+      setTimeUpOpen(false);
+      book.openBill(found.code);
+      setTab(found.code);
+      setMenuOpen(true);
+    });
+  }
+
+  function openHit(hit: VisitHit) {
+    openScanned(hit.code);
+  }
+
+  useEffect(() => {
+    const term = scanText.trim();
+    if (!term) {
+      setHits([]);
+      setHitAt(0);
+      return;
+    }
+    const needle = term.toLowerCase();
+    const local = open.flatMap((item) => {
+      const blob = `${item.code} ${item.phone} ${item.tableNo}`.toLowerCase();
+      if (!blob.includes(needle)) return [];
+      return [
+        {
+          code: item.code,
+          phone: item.phone,
+          status: item.status,
+          childCount: item.childCount,
+          tableNo: item.tableNo,
+          createdAt: item.createdAt,
+          dueNu: item.dueNu,
+          kotQty: item.lines.filter((line) => line.outlet === "restaurant").reduce((sum, line) => sum + line.qty, 0),
+          botQty: item.lines.filter((line) => line.outlet === "cafe").reduce((sum, line) => sum + line.qty, 0),
+        },
+      ];
+    });
+    setHits(local);
+    setHitAt(0);
+    const timer = window.setTimeout(() => {
+      void fetch(`/api/till/search?q=${encodeURIComponent(term)}`)
+        .then((response) => (response.ok ? response.json() : { hits: [] }))
+        .then((body: { hits?: VisitHit[] }) => {
+          const remote = body.hits ?? [];
+          const seen = new Set(local.map((item) => item.code));
+          setHits([...local, ...remote.filter((item) => !seen.has(item.code))].slice(0, 8));
+        })
+        .catch(() => undefined);
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [scanText, open]);
+
+  function beginWalkIn() {
+    setCheck(null);
+    setTender(null);
+    setAskTable(false);
+    setPeopleOpen(false);
+    setRecentOpen(false);
+    setTimeUpOpen(false);
+    book.setSelectedCode("");
+    setTab("playing");
+    setMenuOpen(true);
   }
 
   useEffect(() => {
@@ -596,7 +786,12 @@ export function CashierTouch({
       if (event.key === "Enter") {
         event.preventDefault();
         event.stopPropagation();
-        if (draft.step === "phone" && draft.phone.length === 8) {
+        if (draft.step === "kind") {
+          if (draft.kind === "walkin") beginWalkIn();
+          else setCheck({ ...draft, step: "time" });
+        } else if (draft.step === "time") {
+          setCheck({ ...draft, step: "phone" });
+        } else if (draft.step === "phone" && draft.phone.length === 8) {
           const match = open.find((item) => item.phone === draft.phone && (item.childCount > 0 || item.blocks.length > 0));
           if (match) {
             setCheck({ ...draft, step: "adding", addToId: match.id, addToCode: match.code, addToCount: match.childCount, children: "1" });
@@ -608,7 +803,28 @@ export function CashierTouch({
         else if (draft.step === "children") {
           const count = Number(draft.children);
           if (count >= 1 && count <= 12) setCheck({ ...draft, step: "pay" });
+        } else if (draft.step === "pay") {
+          setCheck({ ...draft, method: "bank_qr", step: "journal" });
         } else if (draft.step === "journal" && draft.journal.trim() && (draft.bank || bankFromJournal(draft.journal))) setSendCheck(true);
+        return;
+      }
+      if (draft.step === "kind" && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+        event.preventDefault();
+        event.stopPropagation();
+        setCheck({ ...draft, kind: draft.kind === "walkin" ? "play" : "walkin" });
+        return;
+      }
+      if (
+        draft.step === "time" &&
+        (event.key === "ArrowUp" || event.key === "ArrowDown" || event.key === "ArrowLeft" || event.key === "ArrowRight")
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!playRates.length) return;
+        const index = playRates.findIndex((rate) => rate.minutes === draft.minutes);
+        const step = event.key === "ArrowDown" || event.key === "ArrowRight" ? 1 : -1;
+        const next = playRates[(Math.max(0, index) + step + playRates.length) % playRates.length];
+        if (next) setCheck({ ...draft, minutes: next.minutes });
         return;
       }
       if (draft.step !== "pay") return;
@@ -624,24 +840,20 @@ export function CashierTouch({
     }
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [check, open]);
+  }, [check, open, playRates]);
 
   useEffect(() => {
-    if (!showPack || !qr) return;
-    let stage: "sticker" | "receipt" | "done" = "sticker";
+    if (!showPack || !qr || !visit?.code) return;
+    const mark = `tumble-pack:${visit.code}`;
+    if (sessionStorage.getItem(mark) === "1") return;
     const timer = window.setTimeout(() => {
+      sessionStorage.setItem(mark, "1");
       document.body.dataset.print = "sticker";
       window.print();
     }, 400);
     function done() {
-      if (stage === "sticker") {
-        stage = "receipt";
-        document.body.dataset.print = "receipt";
-        window.print();
-        return;
-      }
-      stage = "done";
       delete document.body.dataset.print;
+      setLocalPack(false);
       const url = new URL(window.location.href);
       url.searchParams.delete("print");
       window.history.replaceState(null, "", `${url.pathname}${url.search}`);
@@ -650,8 +862,9 @@ export function CashierTouch({
     return () => {
       window.clearTimeout(timer);
       window.removeEventListener("afterprint", done);
+      delete document.body.dataset.print;
     };
-  }, [showPack, qr]);
+  }, [showPack, qr, visit?.code]);
 
   useEffect(() => {
     if (!ticket) return;
@@ -665,7 +878,6 @@ export function CashierTouch({
         window.removeEventListener("afterprint", done);
         const next = restTickets.current.shift() ?? null;
         setTicket(next);
-        if (!next) openTender();
       };
       window.addEventListener("afterprint", done);
       window.print();
@@ -690,6 +902,7 @@ export function CashierTouch({
           amount: line.amountNu,
           paid: line.paid,
         })),
+        ...(visit.status === "open" ? chargeRows.map((row) => ({ name: row.name, qty: 1, amount: row.amount, paid: false })) : []),
       ]
     : tender?.kind === "checkin"
       ? [{ name: `Play ${tender.minutes} min`, qty: 1, amount: tender.amountNu, paid: false }]
@@ -705,10 +918,60 @@ export function CashierTouch({
   return (
     <TillShell
       touch="cashier"
+      headClass="till-command"
       scanAction="/cashier"
       scanDefault={query}
+      scanValue={scanText}
+      onScanChange={setScanText}
+      onScanKeyDown={(event) => {
+        if (!hits.length) return;
+        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+          event.preventDefault();
+          const step = event.key === "ArrowDown" ? 1 : -1;
+          setHitAt((index) => (index + step + hits.length) % hits.length);
+        } else if (event.key === "Enter") {
+          event.preventDefault();
+          const hit = hits[Math.min(hitAt, hits.length - 1)];
+          if (hit) openHit(hit);
+        } else if (event.key === "Escape") {
+          setHits([]);
+        }
+      }}
+      scanExtra={
+        hits.length ? (
+          <ul className="till-hits" role="listbox" aria-label="Matching bills">
+            {hits.map((hit, index) => (
+              <li key={hit.code}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={index === hitAt}
+                  onMouseEnter={() => setHitAt(index)}
+                  onClick={() => openHit(hit)}
+                >
+                  <strong>
+                    {hit.phone.length === 8 ? formatPhone(hit.phone) : hit.code}
+                    <span>{hit.code}</span>
+                  </strong>
+                  <small>
+                    {hit.status === "open" ? "Open" : "Past"}
+                    {hit.childCount ? ` · ${hit.childCount} ${hit.childCount === 1 ? "child" : "children"}` : ""}
+                    {hit.tableNo ? ` · ${tableLabel(hit.tableNo)}` : ""}
+                    {hit.kotQty ? ` · KOT ${hit.kotQty}` : ""}
+                    {hit.botQty ? ` · BOT ${hit.botQty}` : ""}
+                    {hit.dueNu > 0 ? ` · ${formatNu(hit.dueNu)}` : ""}
+                    {` · ${formatClock(hit.createdAt)}`}
+                  </small>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null
+      }
+      onFind={openScanned}
       inputMode="none"
       scanPlaceholder="Phone or ticket"
+      lead={<BackOfficeButton role={role} />}
       dueEyebrow={visit ? (overtime ? "Extra time" : "Due") : "Playing"}
       dueValue={visit ? formatNu(due) : String(childrenIn)}
       dueHint={
@@ -716,7 +979,7 @@ export function CashierTouch({
           ? overtime
             ? `Stayed ${overtime.extraMinutes} min extra`
             : openVisit
-              ? formatPhone(openVisit.phone)
+              ? `Came ${formatClock(openVisit.createdAt)}`
               : "Closed"
           : overdue > 0
             ? `${overdue} overtime`
@@ -724,11 +987,12 @@ export function CashierTouch({
       }
       status={status}
       statusBad={Boolean(error || (lookup && !openVisit))}
-      tools={
-        <>
+      info={
+        <div className="till-info desk-meters">
           <button
             type="button"
-            className="hold-chip"
+            className="desk-meter"
+            data-tone="live"
             data-alarm={overdue > 0 ? "over" : ending > 0 ? "warn" : "ok"}
             aria-pressed={peopleOpen}
             onClick={() => {
@@ -744,7 +1008,8 @@ export function CashierTouch({
           </button>
           <button
             type="button"
-            className="hold-chip"
+            className="desk-meter"
+            data-tone="quiet"
             data-alarm={overdue > 0 ? "over" : "ok"}
             aria-pressed={timeUpOpen}
             onClick={() => {
@@ -756,44 +1021,90 @@ export function CashierTouch({
           >
             <b>{overdue}</b>
             <span>Time&apos;s up</span>
+            <small>{overdue > 0 ? "Open the list" : "Clear"}</small>
           </button>
           {overdue > 0 && !quiet ? (
-            <Button type="button" variant="outline" className="h-11" onClick={() => setQuiet(true)}>
+            <Button type="button" variant="outline" className="h-8 self-center" onClick={() => setQuiet(true)}>
               Quiet
             </Button>
           ) : null}
-          <p className="text-xs text-muted-foreground">
-            <b className="text-foreground">{formatNu(todayNu)}</b> today · <b className="text-foreground">{formatNu(playNu)}</b> play ·{" "}
-            <b className="text-foreground">{formatNu(foodNu)}</b> food
-            <span className="ml-2">{book.pending > 0 ? "On this till" : book.ready ? "Saved" : "Opening the till"}</span>
+          <div className="desk-money">
+            <p>
+              <small>KOT</small>
+              <b>{formatNu(kotNu)}</b>
+            </p>
+            <p>
+              <small>BOT</small>
+              <b>{formatNu(botNu)}</b>
+            </p>
+            <p>
+              <small>Play</small>
+              <b>{formatNu(playNu)}</b>
+            </p>
+            <p>
+              <small>Children</small>
+              <b>{childrenIn}</b>
+            </p>
+          </div>
+          <p className="desk-sync" data-state={book.pending > 0 ? "local" : book.ready ? "saved" : "opening"}>
+            <i aria-hidden="true" />
+            {book.pending > 0 ? "On this till" : book.ready ? "Saved" : "Opening"}
           </p>
-          <Button type="button" variant="outline" className="h-11" onClick={() => void book.chooseBackup()}>
-            {book.backupOn ? "Backup on" : "Backup"}
-          </Button>
-          <Button type="button" variant="outline" className="h-11" onClick={() => void book.restoreBackup()}>
-            Restore
-          </Button>
-          <Button type="button" variant={cam ? "secondary" : "outline"} className="h-11" aria-pressed={cam} onClick={() => setCam((value) => !value)}>
-            Camera
-          </Button>
-          <Button type="button" variant="outline" className="h-11" onClick={() => window.open("/display", "tumble-customer", "width=1100,height=800")}>
-            Screen
-          </Button>
-          <Button type="button" variant="outline" className="h-11" onClick={beginCheckIn}>
-            New
-          </Button>
-          {openVisit ? (
-            <Button variant="outline" className="h-11" asChild>
-              <Link href={`/stickers/${openVisit.code}`}>Stickers</Link>
+        </div>
+      }
+      tools={
+        <div className="desk-tools">
+          <div className="desk-cluster">
+            <Button type="button" variant={book.backupOn ? "secondary" : "ghost"} className="h-8" onClick={() => void book.chooseBackup()}>
+              <HardDrive aria-hidden />
+              {book.backupOn ? "Backup on" : "Backup"}
             </Button>
-          ) : null}
-          <span className="text-sm">{staffName}</span>
-          <form action={logoutAction}>
-            <Button type="submit" variant="outline" className="h-11">
-              Lock
+            <Button type="button" variant="ghost" className="h-8" onClick={() => void book.restoreBackup()}>
+              <RotateCcw aria-hidden />
+              Restore
             </Button>
-          </form>
-        </>
+          </div>
+          <div className="desk-cluster">
+            <Button type="button" variant={cam ? "secondary" : "ghost"} className="h-8" aria-pressed={cam} onClick={() => setCam((value) => !value)}>
+              <Camera aria-hidden />
+              Camera
+            </Button>
+            <Button type="button" variant="ghost" className="h-8" onClick={() => window.open("/display", "tumble-customer", "width=1100,height=800")}>
+              <Monitor aria-hidden />
+              Screen
+            </Button>
+          </div>
+          <div className="desk-actions">
+            <Button type="button" variant="secondary" className="h-8" onClick={beginWalkIn}>
+              <PersonStanding aria-hidden />
+              Walk-in
+            </Button>
+            <Button type="button" className="h-8" onClick={beginCheckIn}>
+              <Plus aria-hidden />
+              New
+            </Button>
+            {openVisit ? (
+              <Button variant="outline" className="h-8" asChild>
+                <Link href={`/stickers/${openVisit.code}`}>
+                  <Sticker aria-hidden />
+                  Stickers
+                </Link>
+              </Button>
+            ) : null}
+          </div>
+          <div className="desk-session">
+            <span className="desk-staff">
+              <span aria-hidden="true">{staffName.slice(0, 1).toUpperCase()}</span>
+              {staffName}
+            </span>
+            <form action={logoutAction}>
+              <Button type="submit" variant="outline" className="h-8">
+                <Lock aria-hidden />
+                Lock
+              </Button>
+            </form>
+          </div>
+        </div>
       }
     >
         {cam ? (
@@ -805,16 +1116,18 @@ export function CashierTouch({
         <div className="tshong-till-body cash-stage">
           <div className="tshong-till-ticket cash-list">
             <Tabs value={tab} onValueChange={setTab} className="cash-tabs min-h-0 flex-1">
-              <TabsList variant="line" className="h-11 w-full justify-start gap-1 overflow-x-auto px-3">
-                <TabsTrigger value="playing">Playing</TabsTrigger>
+              <TabsList variant="line" className="h-9 w-fit max-w-full justify-start gap-0 overflow-x-auto px-1">
+                <TabsTrigger value="playing" className="h-9 flex-none px-2.5">Playing</TabsTrigger>
                 {tickets.map((item) => (
                   <TabsTrigger
                     key={item.id}
                     value={item.code}
+                    data-table={tableTone(item.tableNo)}
+                    className="h-9 flex-none px-2.5"
                     onClick={() => book.openBill(item.code)}
                   >
                     {item.childCount === 0 && item.blocks.length === 0 ? tableLabel(item.tableNo) : formatPhone(item.phone)}
-                    <Badge variant={item.lines.some((line) => !line.paid) ? "default" : "secondary"}>
+                    <Badge variant="secondary">
                       {item.lines.reduce((sum, line) => sum + line.qty, 0) || item.childCount}
                     </Badge>
                   </TabsTrigger>
@@ -822,54 +1135,96 @@ export function CashierTouch({
               </TabsList>
               <TabsContent value="playing" className="min-h-0 overflow-auto">
                 {ranked.length ? (
-                  <ul className="play-board">
+                  <ul data-play-board="" className="grid list-none grid-cols-[repeat(auto-fill,15.5rem)] gap-3 p-3" aria-label="Open visits">
                     {ranked.map((row, index) => {
                       const on = openVisit ? row.item.id === openVisit.id : index === Math.min(boardAt, ranked.length - 1);
                       const time = row.left < 0 ? "over" : row.left <= 5 ? "ending" : "ok";
+                      const label = row.walkIn ? tableLabel(row.item.tableNo) : formatPhone(row.item.phone);
+                      const dishes = row.item.lines;
+                      const preview = dishes.slice(0, 2).map((line) => (line.qty > 1 ? `${line.name} ×${line.qty}` : line.name));
+                      const more = dishes.length - preview.length;
+                      const place = row.item.tableNo.trim() ? tableLabel(row.item.tableNo) : "No table";
+                      const detail = row.walkIn
+                        ? `${dishes.reduce((sum, line) => sum + line.qty, 0)} items`
+                        : `${row.item.childCount} ${row.item.childCount === 1 ? "child" : "children"}`;
                       return (
-                        <li key={row.item.id}>
-                          <div className="play-row" data-on={on ? "1" : "0"} data-time={time}>
+                        <li key={row.item.id} className="aspect-video min-w-0">
+                          <Card
+                            size="sm"
+                            data-play-card=""
+                            data-wash={String(Math.abs(row.item.id * 17 + row.item.code.length) % 8)}
+                            data-kind={row.walkIn ? "walkin" : row.held ? "held" : "play"}
+                            data-on={on ? "1" : "0"}
+                            data-time={time}
+                            className={`relative h-full gap-0 overflow-hidden border-0 py-0 shadow-sm ${on ? "ring-2 ring-primary" : ""}`}
+                          >
                             <button
                               type="button"
+                              data-board-card={row.item.id}
+                              tabIndex={on ? 0 : -1}
+                              aria-current={on ? "true" : undefined}
+                              aria-label={label}
+                              className="absolute inset-0 z-0 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring"
                               onClick={() => {
                                 setBoardAt(index);
-                                setTab(row.item.lines.length > 0 || row.walkIn ? row.item.code : "playing");
+                                setTab(row.item.code);
                                 book.openBill(row.item.code);
                               }}
-                            >
-                              <b>{row.walkIn ? tableLabel(row.item.tableNo) : formatPhone(row.item.phone)}</b>
-                              <em className="tabular-nums">
-                                {row.walkIn ? (
-                                  formatNu(row.item.dueNu)
-                                ) : (
-                                  <MiniRing end={row.item.paidUntil} spanMin={playSpanMinutes(row.item.blocks)} />
-                                )}
-                              </em>
-                              <small>
-                                {row.walkIn
-                                  ? `${row.item.lines.reduce((sum, line) => sum + line.qty, 0)} items`
-                                  : `${row.item.childCount} ${row.item.childCount === 1 ? "child" : "children"}${time === "ending" ? " · ending" : time === "over" ? " · overtime" : ""}`}
-                              </small>
-                            </button>
+                            />
+                            <div className="pointer-events-none relative z-[1] flex h-full flex-col justify-between p-3">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <CardTitle className="truncate text-base tabular-nums">{label}</CardTitle>
+                                  {dishes.length ? (
+                                    <div className="mt-1 grid gap-0.5 text-xs text-foreground/80">
+                                      <p className="truncate font-medium text-foreground">{place}</p>
+                                      {preview.length ? (
+                                        <p className="line-clamp-2">
+                                          {preview.join(", ")}
+                                          {more > 0 ? ` +${more}` : ""}
+                                        </p>
+                                      ) : null}
+                                    </div>
+                                  ) : null}
+                                </div>
+                                <CardAction className="static col-auto row-auto">
+                                  {row.walkIn || row.held ? (
+                                    <span className="font-heading text-base tabular-nums">{formatNu(row.item.dueNu)}</span>
+                                  ) : (
+                                    <MiniRing end={row.item.paidUntil} spanMin={playSpanMinutes(row.item.blocks)} />
+                                  )}
+                                </CardAction>
+                              </div>
+                              <CardDescription className={`flex flex-wrap items-center gap-1.5 ${!row.walkIn && row.left < 0 ? "pr-24" : ""}`}>
+                                <Badge variant={time === "over" ? "destructive" : time === "ending" ? "secondary" : "outline"}>
+                                  {row.walkIn ? "Walk-in" : row.held ? "Pay held" : time === "over" ? "Overtime" : time === "ending" ? "Ending" : "On time"}
+                                </Badge>
+                                <span className="inline-flex items-center gap-1">
+                                  <Users aria-hidden className="size-3.5" />
+                                  {detail}
+                                </span>
+                              </CardDescription>
+                            </div>
                             {!row.walkIn && row.left < 0 ? (
-                              <a
-                                className="play-wa"
-                                data-sent={sentIds.includes(row.item.id) ? "1" : "0"}
-                                href={whatsAppChat(row.item.phone, venueName, Math.abs(row.left))}
-                                target="_blank"
-                                rel="noreferrer"
-                                onClick={() => markChat(row.item.id)}
-                              >
-                                {sentIds.includes(row.item.id) ? "Sent · WhatsApp" : "WhatsApp · W"}
-                              </a>
+                              <Button variant={sentIds.includes(row.item.id) ? "outline" : "default"} size="xs" className="absolute right-2.5 bottom-2.5 z-10" asChild>
+                                <a
+                                  href={whatsAppChat(row.item.phone, venueName, Math.abs(row.left))}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  onClick={() => markChat(row.item.id)}
+                                >
+                                  <MessageCircle aria-hidden />
+                                  {sentIds.includes(row.item.id) ? "Sent" : "WhatsApp"}
+                                </a>
+                              </Button>
                             ) : null}
-                          </div>
+                          </Card>
                         </li>
                       );
                     })}
                   </ul>
                 ) : (
-                  <p className="cash-hint">No one is playing. Alt+N checks in a family. Alt+L starts a walk-in order.</p>
+                  <p className="cash-hint">No one is playing. Alt+N asks walk-in or play. Scan a ticket to add food to that family.</p>
                 )}
               </TabsContent>
               {tickets.map((item) => (
@@ -898,6 +1253,15 @@ export function CashierTouch({
                         lineKey: lineKeyOf(line),
                       })
                     }
+                    onDeliver={(line) =>
+                      book.commit({
+                        id: crypto.randomUUID(),
+                        at: new Date().toISOString(),
+                        kind: "deliverKot",
+                        visitKey: visitKey(item),
+                        lineKeys: [lineKeyOf(line)],
+                      })
+                    }
                     onVoid={(line, next, secret) =>
                       book.commit({
                         id: crypto.randomUUID(),
@@ -914,16 +1278,19 @@ export function CashierTouch({
               ))}
             </Tabs>
           </div>
-          {check && playRate ? (
+          {check ? (
             <CheckInSheet
               venueName={venueName}
               draft={check}
+              rates={playRates}
               rate={playRate}
               staticPayload={staticPayload}
               fieldRef={checkField}
               formRef={checkForm}
               onChange={setCheck}
+              onWalkIn={beginWalkIn}
               onCheckIn={(draft) => {
+                if (!playRate) return;
                 const code = localCode();
                 const saved = book.commit({
                   id: crypto.randomUUID(),
@@ -934,7 +1301,7 @@ export function CashierTouch({
                   phone: draft.phone,
                   name: "",
                   childCount: Math.max(1, Number(draft.children) || 1),
-                  minutes: playRate.minutes,
+                  minutes: draft.minutes || playRate.minutes,
                   method: draft.method,
                   journal: draft.journal,
                   payBank: draft.bank || bankFromJournal(draft.journal),
@@ -943,6 +1310,7 @@ export function CashierTouch({
                 setCheck(null);
                 setLocalPack(true);
                 book.openBill(code);
+                setTab(code);
               }}
               onAdd={(draft) => {
                 const match = open.find((item) => item.id === draft.addToId);
@@ -958,6 +1326,7 @@ export function CashierTouch({
                 setCheck(null);
                 setLocalPack(true);
                 book.openBill(match.code);
+                setTab(match.code);
               }}
             />
           ) : openVisit ? (
@@ -965,6 +1334,7 @@ export function CashierTouch({
               venueName={venueName}
               visit={openVisit}
               due={due}
+              charges={chargeRows}
               overtime={overtime}
               askTable={askTable}
               tableNo={tableNo}
@@ -976,6 +1346,18 @@ export function CashierTouch({
                 setTableNo(value);
               }}
               onSale={() => saleRef.current()}
+              onAddChild={
+                openVisit.childCount < 12
+                  ? () =>
+                      book.commit({
+                        id: crypto.randomUUID(),
+                        at: new Date().toISOString(),
+                        kind: "addChildren",
+                        visitKey: visitKey(openVisit),
+                        childCount: 1,
+                      })
+                  : undefined
+              }
             />
           ) : (
             <ChildSheet venueName={venueName} visit={ranked[Math.min(boardAt, Math.max(0, ranked.length - 1))]?.item ?? null} />
@@ -1038,6 +1420,10 @@ export function CashierTouch({
               <span>Play</span>
             </button>
           ) : null}
+          <button type="button" className="tshong-fkey" onClick={beginWalkIn}>
+            <small>Alt+W</small>
+            <span>Walk-in</span>
+          </button>
           <button type="button" className="tshong-fkey" onClick={beginCheckIn}>
             <small>Alt+N</small>
             <span>New</span>
@@ -1057,8 +1443,8 @@ export function CashierTouch({
             <span>People</span>
           </button>
           {openVisit ? (
-            <button type="button" className="tshong-fkey" onClick={() => saleRef.current()}>
-              <small>Alt+S</small>
+            <button type="button" className="tshong-fkey" onClick={printTickets}>
+              <small>Print</small>
               <span>Tickets</span>
             </button>
           ) : null}
@@ -1073,7 +1459,7 @@ export function CashierTouch({
               onClick={() => saleRef.current()}
             >
               <small>Alt+S</small>
-              <span>Tender</span>
+              <span>{(openVisit.childCount > 0 || openVisit.blocks.length > 0) && !openVisit.leftAt ? "Finish" : "Pay"}</span>
             </button>
           ) : null}
           <button
@@ -1144,8 +1530,57 @@ export function CashierTouch({
         {menuOpen ? (
           <MenuSheet
             menu={menu}
+            rates={playRates}
             onClose={() => setMenuOpen(false)}
+            knownPhone={openVisit && openVisit.phone.length === 8 ? openVisit.phone : ""}
+            role={role}
+            onCreate={async (draft) => {
+              try {
+                const item = await addCounterDish(draft);
+                book.addMenu(item);
+                const lineKey = crypto.randomUUID();
+                const key = openVisit ? visitKey(openVisit) : crypto.randomUUID();
+                const code = openVisit ? openVisit.code : localCode();
+                const saved = book.commit({
+                  id: crypto.randomUUID(),
+                  at: new Date().toISOString(),
+                  kind: "addItem",
+                  visitKey: key,
+                  lineKey,
+                  itemId: item.id,
+                  outlet: item.outlet,
+                  code,
+                });
+                if (saved && !openVisit) {
+                  book.openBill(code);
+                  setTab(code);
+                }
+              } catch (caught) {
+                const message = caught instanceof Error ? caught.message : "";
+                book.report(
+                  /fetch|network|failed/i.test(message)
+                    ? "The menu can be added when this till is online."
+                    : message || "The dish was not saved.",
+                );
+                throw caught;
+              }
+            }}
+            onPlay={(minutes, phone) => {
+              if (!openVisit) return;
+              const saved = book.commit({
+                id: crypto.randomUUID(),
+                at: new Date().toISOString(),
+                kind: "addPlay",
+                visitKey: visitKey(openVisit),
+                minutes,
+                phone,
+              });
+              if (!saved) return;
+              setLocalPack(true);
+              setMenuOpen(false);
+            }}
             onAdd={(item) => {
+              const lineKey = crypto.randomUUID();
               const key = openVisit ? visitKey(openVisit) : crypto.randomUUID();
               const code = openVisit ? openVisit.code : localCode();
               const saved = book.commit({
@@ -1153,11 +1588,22 @@ export function CashierTouch({
                 at: new Date().toISOString(),
                 kind: "addItem",
                 visitKey: key,
-                lineKey: crypto.randomUUID(),
+                lineKey,
                 itemId: item.id,
                 outlet: item.outlet,
                 code,
               });
+              const line =
+                saved?.lines.find((row) => lineKeyOf(row) === lineKey) ??
+                saved?.lines.filter((row) => !row.paid && row.name === item.name).at(-1);
+              if (line) {
+                const qtyKey = lineKeyOf(line);
+                window.setTimeout(() => {
+                  const input = document.querySelector<HTMLInputElement>(`[data-qty-key="${qtyKey}"]`);
+                  input?.focus();
+                  input?.select();
+                }, 0);
+              }
               if (!saved || openVisit) return;
               book.openBill(code);
               setTab(code);
@@ -1170,6 +1616,8 @@ export function CashierTouch({
               if (!openVisit) return;
               const method = String(formData.get("method") ?? "bank_qr");
               const pay = method === "cash" || method === "split" || method === "bank_qr" ? method : "bank_qr";
+              const cashNu = Number(formData.get("cashNu") ?? 0);
+              const bankNu = Number(formData.get("bankNu") ?? 0);
               const saved = book.commit({
                 id: crypto.randomUUID(),
                 at: new Date().toISOString(),
@@ -1178,10 +1626,40 @@ export function CashierTouch({
                 method: pay,
                 journal: String(formData.get("journal") ?? ""),
                 payBank: String(formData.get("payBank") ?? ""),
-                cashNu: Number(formData.get("cashNu") ?? 0),
-                bankNu: Number(formData.get("bankNu") ?? 0),
+                cashNu,
+                bankNu,
               });
-              if (saved) setTender(null);
+              if (!saved) return;
+              const cash = pay === "bank_qr" ? 0 : pay === "split" ? cashNu : due;
+              const bank = pay === "cash" ? 0 : pay === "split" ? bankNu : due;
+              setPaidSlip({
+                code: saved.code,
+                phone: saved.phone,
+                when: saved.closedAt || new Date().toISOString(),
+                lines: [
+                  ...saved.blocks.map((block) => ({
+                    name: `Play ${block.minutes} min`,
+                    qty: 1,
+                    amount: block.amountNu,
+                    paid: true,
+                  })),
+                  ...(overtime && overtime.amountNu > 0
+                    ? [{ name: `Extra ${overtime.extraMinutes} min`, qty: 1, amount: overtime.amountNu, paid: true }]
+                    : []),
+                  ...saved.lines.map((line) => ({
+                    name: line.name,
+                    qty: line.qty,
+                    amount: line.amountNu,
+                    paid: true,
+                  })),
+                  ...chargeRows.map((row) => ({ name: row.name, qty: 1, amount: row.amount, paid: true })),
+                ],
+                cash,
+                bank,
+                total: cash + bank,
+                receiptNo: saved.receiptNo,
+              });
+              setTender(null);
             }}
             method={tenderMethod}
             onMethod={setTenderMethod}
@@ -1258,21 +1736,22 @@ export function CashierTouch({
         />
         </PrintPortal>
       ) : null}
-      {receiptLines.length > 0 ? (
+      {paidSlip || receiptLines.length > 0 ? (
         <PrintPortal>
         <Receipt
           venue={venueName}
           address={venueAddress}
-          when={formatWhen(visit?.closedAt || visit?.createdAt || new Date().toISOString())}
-          code={visit?.code ?? ""}
-          phone={visit ? formatPhone(visit.phone) : tender?.kind === "checkin" ? formatPhone(tender.phone) : ""}
-          lines={receiptLines}
-          total={receiptTotal}
-          cash={receiptCash}
-          bank={receiptBank}
+          when={formatWhen(paidSlip?.when || visit?.closedAt || visit?.createdAt || new Date().toISOString())}
+          code={paidSlip?.code ?? visit?.code ?? ""}
+          phone={paidSlip ? formatPhone(paidSlip.phone) : visit ? formatPhone(visit.phone) : tender?.kind === "checkin" ? formatPhone(tender.phone) : ""}
+          lines={paidSlip?.lines ?? receiptLines}
+          total={paidSlip?.total ?? receiptTotal}
+          cash={paidSlip?.cash ?? receiptCash}
+          bank={paidSlip?.bank ?? receiptBank}
           note={receiptNote}
           thanks={receiptThanks}
           rules={receiptRules.split(/\r?\n/)}
+          number={paidSlip?.receiptNo ?? visit?.receiptNo}
         />
         </PrintPortal>
       ) : null}
@@ -1287,6 +1766,7 @@ function BillTab({
   staffName,
   onQty,
   onDrop,
+  onDeliver,
   onVoid,
 }: {
   visit: VisitView;
@@ -1295,6 +1775,7 @@ function BillTab({
   staffName: string;
   onQty: (line: VisitView["lines"][number], delta: number) => void;
   onDrop: (line: VisitView["lines"][number]) => void;
+  onDeliver: (line: VisitView["lines"][number]) => void;
   onVoid: (line: VisitView["lines"][number], next: number, secret: string) => void;
 }) {
   const rows = [
@@ -1310,7 +1791,7 @@ function BillTab({
     ...visit.lines.map((line) => ({
       key: `line-${line.id}-${line.qty}`,
       name: line.name,
-      meta: line.outlet === "cafe" ? "Cafe" : "Restaurant",
+      meta: line.outlet === "cafe" ? "Cafe" : "Bar",
       amount: line.amountNu,
       paid: line.paid,
       qty: line.qty,
@@ -1340,68 +1821,87 @@ function BillTab({
         event.preventDefault();
         if (line.firedQty > 0) setVoiding({ lineId: line.id, next: 0 });
         else document.querySelector<HTMLButtonElement>(`[data-drop-line="${line.id}"]`)?.click();
-      } else if (event.key === "-" || event.key === "Subtract") {
+      } else if (event.key === "Enter") {
         event.preventDefault();
-        if (line.qty - 1 < line.firedQty) setVoiding({ lineId: line.id, next: Math.max(0, line.qty - 1) });
-        else onQty(line, -1);
-      } else if (event.key === "Enter" || event.key === "+" || event.key === "=" || event.key === "Add") {
-        event.preventDefault();
-        onQty(line, 1);
+        const input = document.querySelector<HTMLInputElement>(`[data-qty-key="${lineKeyOf(line)}"]`);
+        input?.focus();
+        input?.select();
       }
     }
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [active, at, food, voiding, onQty]);
+  }, [active, at, food, voiding]);
   if (!rows.length) {
-    return <p className="cash-hint">This bill is empty. Alt+L adds a dish.</p>;
+    return <p className="px-4 py-6 text-sm text-muted-foreground">This bill is empty. Alt+L adds a dish. Alt+W starts another walk-in.</p>;
   }
+  const picked = food[Math.min(at, food.length - 1)];
   return (
     <>
-    <ul className="play-board">
-      <li className="px-4 py-2 text-xs text-muted-foreground">Up and down choose a line. Enter adds one. Delete removes a line the kitchen has not started. A sent dish needs a manager void.</li>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead className="h-8 w-14 px-2">Qty</TableHead>
+          <TableHead className="h-8 px-2">Item</TableHead>
+          <TableHead className="h-8 w-24 px-2 text-right">Amount</TableHead>
+          <TableHead className="h-8 w-14 px-2" />
+        </TableRow>
+      </TableHeader>
+      <TableBody>
       {rows.map((row) => (
-        <li
+        <TableRow
           key={row.key}
-          data-on={row.line && food[Math.min(at, food.length - 1)]?.id === row.line.id ? "1" : "0"}
-          className="animate-in fade-in slide-in-from-left-2 flex items-center justify-between gap-3 border-b px-4 py-2 duration-300 data-[on=1]:bg-muted"
+          data-state={row.line && picked?.id === row.line.id ? "selected" : undefined}
         >
-          <div className="min-w-0">
-            <p className="truncate font-medium">
-              {row.qty ? `${row.qty} × ` : ""}
-              {row.name}
-            </p>
-            <Badge variant="outline" className="mt-1">
-              {row.meta}
-              {row.paid ? " · paid" : ""}
-            </Badge>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <b className="tabular-nums">{row.paid ? "Paid" : formatNu(row.amount)}</b>
+          <TableCell className="w-14 px-2 py-1">
+            {row.line && !row.line.paid ? (
+              <QtyField
+                line={row.line}
+                onQty={onQty}
+                onBelowFired={(next) => setVoiding({ lineId: row.line!.id, next })}
+              />
+            ) : (
+              <span className="inline-flex h-7 w-12 items-center justify-center text-sm tabular-nums">{row.qty ?? 1}</span>
+            )}
+          </TableCell>
+          <TableCell className="max-w-0 py-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="truncate font-medium">{row.name}</span>
+              <Badge variant="outline">
+                {row.meta}
+                {row.line && row.line.firedQty > 0 && (row.line.deliveredQty ?? 0) >= row.line.firedQty
+                  ? " · delivered"
+                  : row.line && row.line.firedQty > 0
+                    ? " · KOT printed"
+                    : ""}
+                {row.paid ? " · paid" : ""}
+              </Badge>
+            </div>
+          </TableCell>
+          <TableCell className="py-1 text-right font-medium tabular-nums">{row.paid ? "Paid" : formatNu(row.amount)}</TableCell>
+          <TableCell className="py-1 pr-2 text-right">
             {row.line && !row.line.paid ? (
               <>
-                {row.line.qty - 1 < row.line.firedQty ? (
-                  <Button type="button" size="icon-xs" variant="outline" aria-label="Remove one" onClick={() => setVoiding({ lineId: row.line!.id, next: Math.max(0, row.line!.qty - 1) })}>
-                    −
+                {row.line.outlet === "restaurant" && row.line.firedQty > (row.line.deliveredQty ?? 0) ? (
+                  <Button type="button" size="xs" variant="secondary" onClick={() => onDeliver(row.line!)}>
+                    Delivered
                   </Button>
-                ) : (
-                  <LineQty lineId={row.line.id} delta={-1} label="−" onQty={() => onQty(row.line!, -1)} />
-                )}
-                <LineQty lineId={row.line.id} delta={1} label="+" onQty={() => onQty(row.line!, 1)} />
+                ) : null}
                 {row.line.firedQty > 0 ? (
-                  <Button type="button" size="xs" variant="outline" onClick={() => setVoiding({ lineId: row.line!.id, next: 0 })}>
+                  <Button type="button" size="xs" variant="ghost" onClick={() => setVoiding({ lineId: row.line!.id, next: 0 })}>
                     Delete
                   </Button>
                 ) : (
-                  <Button type="button" size="xs" variant="outline" data-drop-line={row.line.id} onClick={() => onDrop(row.line!)}>
+                  <Button type="button" size="xs" variant="ghost" data-drop-line={row.line.id} onClick={() => onDrop(row.line!)}>
                     Delete
                   </Button>
                 )}
               </>
             ) : null}
-          </div>
-        </li>
+          </TableCell>
+        </TableRow>
       ))}
-    </ul>
+      </TableBody>
+    </Table>
     <LineVoid
       visit={visit}
       venueName={venueName}
@@ -1526,10 +2026,10 @@ function ChildSheet({ venueName, visit }: { venueName: string; visit: VisitView 
               </b>
             </p>
             <GlowTimer end={visit.paidUntil} spanMin={playSpanMinutes(visit.blocks)} />
-            <p className="cash-hint">Alt+L adds food. Alt+N checks in a new family.</p>
+            <p className="cash-hint">Alt+L adds food on this play visit. Scan the ticket to open this same family.</p>
           </>
         ) : (
-          <p className="cash-hint">Alt+N checks in a family. Mobile, children, then cash or bank QR.</p>
+          <p className="cash-hint">Alt+N asks walk-in or play. Play is paid first. Scan the ticket later to add food on that same visit.</p>
         )}
       </div>
     </aside>
@@ -1539,27 +2039,33 @@ function ChildSheet({ venueName, visit }: { venueName: string; visit: VisitView 
 function CheckInSheet({
   venueName,
   draft,
+  rates,
   rate,
   staticPayload,
   fieldRef,
   formRef,
   onChange,
+  onWalkIn,
   onCheckIn,
   onAdd,
 }: {
   venueName: string;
   draft: CheckDraft;
-  rate: Rate;
+  rates: Rate[];
+  rate: Rate | null;
   staticPayload: string;
   fieldRef: RefObject<HTMLInputElement | null>;
   formRef: RefObject<HTMLFormElement | null>;
   onChange: (next: CheckDraft) => void;
+  onWalkIn: () => void;
   onCheckIn: (draft: CheckDraft) => void;
   onAdd: (draft: CheckDraft) => void;
 }) {
-  const amount = rate.amountNu;
+  const amount = rate?.amountNu ?? 0;
   const adding = draft.step === "adding";
   const titles: Record<CheckStep, string> = {
+    kind: "Walk-in or play",
+    time: "Play time",
     phone: "Mobile number",
     children: "Children",
     pay: "Pay",
@@ -1574,24 +2080,75 @@ function CheckInSheet({
         className="cash-receipt"
         onSubmit={(event) => {
           event.preventDefault();
+          if (draft.step === "kind") {
+            if (draft.kind === "walkin") onWalkIn();
+            else onChange({ ...draft, step: "time" });
+            return;
+          }
+          if (draft.step === "time") {
+            onChange({ ...draft, step: "phone" });
+            return;
+          }
           if (adding) onAdd(draft);
           else onCheckIn(draft);
         }}
       >
         <header className="cash-receipt-head">
           <strong>{venueName}</strong>
-          <span>{adding ? "Add children" : "Check in"}</span>
+          <span>{adding ? "Add children" : draft.step === "kind" ? "New" : "Check in"}</span>
         </header>
         <hr className="cash-receipt-rule" />
         <p className="cash-receipt-row">
-          <span>{adding ? `${draft.addToCode} · ${draft.addToCount ?? 0} already in` : `Play ${rate.minutes} min`}</span>
-          <b>{adding ? "Same bill" : formatNu(amount)}</b>
+          <span>
+            {adding
+              ? `${draft.addToCode} · ${draft.addToCount ?? 0} already in`
+              : draft.step === "kind"
+                ? draft.kind === "walkin"
+                  ? "Food, no phone"
+                  : "Play, paid first"
+                : `Play ${rate?.minutes ?? draft.minutes} min`}
+          </span>
+          <b>{adding ? "Same bill" : draft.step === "kind" ? (draft.kind === "walkin" ? "Walk-in" : "Play") : formatNu(amount)}</b>
         </p>
         <button type="submit" className="sr-only" tabIndex={-1}>
           Print
         </button>
         <label className="cash-field">
           <span>{titles[draft.step]}</span>
+          {draft.step === "kind" ? (
+            <div className="grid grid-cols-2 gap-2 normal-case">
+              <button type="button" className="cash-time-key" aria-pressed={draft.kind === "walkin"} onClick={onWalkIn}>
+                Walk-in
+              </button>
+              <button
+                type="button"
+                className="cash-time-key"
+                aria-pressed={draft.kind === "play"}
+                onClick={() => onChange({ ...draft, kind: "play", step: "time" })}
+              >
+                Play
+              </button>
+            </div>
+          ) : null}
+          {draft.step === "time" ? (
+            <div className="grid gap-2 normal-case">
+              {rates.length ? (
+                rates.map((item) => (
+                  <button
+                    key={item.minutes}
+                    type="button"
+                    className="cash-time-key"
+                    aria-pressed={item.minutes === draft.minutes}
+                    onClick={() => onChange({ ...draft, minutes: item.minutes, step: "phone" })}
+                  >
+                    {item.minutes} min · {formatNu(item.amountNu)}
+                  </button>
+                ))
+              ) : (
+                <p className="cash-hint">No play rates are set.</p>
+              )}
+            </div>
+          ) : null}
           {draft.step === "phone" ? (
             <input
               ref={fieldRef}
@@ -1610,7 +2167,7 @@ function CheckInSheet({
               onChange={(event) => onChange({ ...draft, children: event.target.value.replace(/\D/g, "").slice(0, 2) })}
             />
           ) : null}
-          {draft.step === "pay" ? <p className="cash-hint">C cash. B bank QR.</p> : null}
+          {draft.step === "pay" ? <p className="cash-hint">Enter types the journal number. C is cash.</p> : null}
           {draft.step === "journal" ? (
             <input
               ref={fieldRef}
@@ -1627,9 +2184,15 @@ function CheckInSheet({
         </label>
         {draft.step === "journal" ? <BankPick value={draft.bank || bankFromJournal(draft.journal)} onChange={(bank) => onChange({ ...draft, bank })} /> : null}
         {draft.method === "bank_qr" && (draft.step === "pay" || draft.step === "journal") ? (
-          <PayQr staticPayload={staticPayload} amountNu={amount} note={`Play ${rate.minutes}m`} compact />
+          <PayQr staticPayload={staticPayload} amountNu={amount} note={`Play ${rate?.minutes ?? draft.minutes}m`} compact />
         ) : null}
-        <p className="cash-hint">Enter continues. Escape cancels.</p>
+        <p className="cash-hint">
+          {draft.step === "kind"
+            ? "Left and right choose. Enter continues. Walk-in opens the menu. Play is paid before they go in."
+            : draft.step === "time"
+              ? "30 min is highlighted. Up and down pick another time. Enter continues."
+              : "Enter continues. Escape cancels. After play is paid, scan the ticket to add food on this same visit."}
+        </p>
       </form>
     </aside>
   );
@@ -1637,15 +2200,34 @@ function CheckInSheet({
 
 function MenuSheet({
   menu,
+  rates,
+  knownPhone,
+  role,
   onClose,
   onAdd,
+  onPlay,
+  onCreate,
 }: {
   menu: MenuItem[];
+  rates: Rate[];
+  knownPhone: string;
+  role: Role;
   onClose: () => void;
   onAdd: (item: MenuItem) => void;
+  onPlay: (minutes: number, phone: string) => void;
+  onCreate: (draft: { name: string; priceNu: number; outlet: Outlet; secret: string }) => Promise<void>;
 }) {
   const [find, setFind] = useState("");
   const [at, setAt] = useState(0);
+  const [pane, setPane] = useState<"food" | "play">("food");
+  const [playAt, setPlayAt] = useState(() => Math.max(0, rates.findIndex((rate) => rate.minutes === 30)));
+  const [phoneFor, setPhoneFor] = useState<number | null>(null);
+  const [phone, setPhone] = useState("");
+  const [dish, setDish] = useState<"name" | "price" | "outlet" | "pin" | null>(null);
+  const [dishName, setDishName] = useState("");
+  const [dishPrice, setDishPrice] = useState("");
+  const [dishOutlet, setDishOutlet] = useState<Outlet>("cafe");
+  const [dishPin, setDishPin] = useState("");
   const needle = find.trim().toLowerCase();
   const rows = useMemo(
     () =>
@@ -1660,15 +2242,92 @@ function MenuSheet({
   }, [needle]);
 
   useEffect(() => {
-    const picked = document.querySelector('[data-menu-item][data-pick="1"]');
+    const picked = document.querySelector('[data-menu-item][data-pick="1"], [data-play-item][data-pick="1"]');
     picked?.scrollIntoView({ block: "nearest" });
-  }, [at, rows]);
+  }, [at, playAt, pane, rows]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
+      if (event.target instanceof HTMLInputElement && event.target.hasAttribute("data-qty-key")) return;
+      if (event.key === "Escape" && (phoneFor != null || dish)) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (phoneFor != null) setPhoneFor(null);
+        else if (dish === "pin") setDish("outlet");
+        else if (dish === "outlet") setDish("price");
+        else if (dish === "price") setDish("name");
+        else setDish(null);
+        return;
+      }
+      if (dish) {
+        if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+          if (dish !== "outlet") return;
+          event.preventDefault();
+          event.stopPropagation();
+          setDishOutlet((current) => (current === "cafe" ? "restaurant" : "cafe"));
+          return;
+        }
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (dish === "name") {
+          if (dishName.trim()) setDish("price");
+          return;
+        }
+        if (dish === "price") {
+          if (Number(dishPrice) >= 0 && dishPrice !== "") setDish("outlet");
+          return;
+        }
+        if (dish === "outlet") {
+          if (role === "admin") {
+            void onCreate({ name: dishName.trim(), priceNu: Number(dishPrice), outlet: dishOutlet, secret: "" })
+              .then(() => setDish(null))
+              .catch(() => undefined);
+          } else setDish("pin");
+          return;
+        }
+        if (dishPin.trim()) {
+          void onCreate({ name: dishName.trim(), priceNu: Number(dishPrice), outlet: dishOutlet, secret: dishPin.trim() })
+            .then(() => setDish(null))
+            .catch(() => undefined);
+        }
+        return;
+      }
+      if (phoneFor != null) {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          event.stopPropagation();
+          const digits = phone.replace(/\D/g, "");
+          if (digits.length === 8) onPlay(phoneFor, digits);
+        }
+        return;
+      }
+      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        event.preventDefault();
+        event.stopPropagation();
+        setPane((current) => (current === "food" ? "play" : "food"));
+        return;
+      }
       if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Enter") return;
-      if (!rows.length) return;
       event.preventDefault();
+      if (pane === "play") {
+        if (!rates.length) return;
+        if (event.key === "ArrowDown") {
+          setPlayAt((index) => Math.min(rates.length - 1, index + 1));
+          return;
+        }
+        if (event.key === "ArrowUp") {
+          setPlayAt((index) => Math.max(0, index - 1));
+          return;
+        }
+        const rate = rates[Math.min(playAt, rates.length - 1)];
+        if (rate) {
+          setPhone(knownPhone);
+          setPhoneFor(rate.minutes);
+        }
+        return;
+      }
+      if (!rows.length) return;
       if (event.key === "ArrowDown") {
         setAt((index) => Math.min(rows.length - 1, index + 1));
         return;
@@ -1683,34 +2342,126 @@ function MenuSheet({
     }
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [rows, at]);
+  }, [rows, at, pane, rates, playAt, onPlay, phoneFor, phone, knownPhone, dish, dishName, dishPrice, dishOutlet, dishPin, role, onCreate]);
 
   return (
-    <div className="cash-scrim" role="presentation" onClick={onClose}>
+    <div className="cash-scrim cash-scrim-clear" role="presentation">
       <div className="cash-sheet" role="dialog" aria-label="Menu" onClick={(event) => event.stopPropagation()}>
         <div className="cash-sheet-bar">
-          <p>Menu</p>
+          <p>{pane === "play" ? "Play" : "Menu"}</p>
           <button type="button" onClick={onClose}>
             Close
           </button>
         </div>
-        <input autoFocus value={find} onChange={(event) => setFind(event.target.value)} placeholder="Find a dish" aria-label="Find a dish" className="cash-find" />
+        <div className="cash-places" role="tablist" aria-label="Menu">
+          <button type="button" role="tab" aria-selected={pane === "food"} onClick={() => setPane("food")}>
+            Food
+          </button>
+          <button type="button" role="tab" aria-selected={pane === "play"} onClick={() => setPane("play")}>
+            Play
+          </button>
+        </div>
+        {dish ? null : pane === "food" ? (
+          <input autoFocus value={find} onChange={(event) => setFind(event.target.value)} placeholder="Find a dish" aria-label="Find a dish" className="cash-find" />
+        ) : phoneFor != null ? (
+          <p className="cash-hint">Type the 8-digit mobile. Enter starts the {phoneFor} min timer and prints the QR.</p>
+        ) : (
+          <p className="cash-hint">Left and right switch. Up and down choose the time. Enter asks for the mobile number.</p>
+        )}
+        {phoneFor != null ? (
+          <input
+            data-play-phone=""
+            autoFocus
+            inputMode="numeric"
+            value={phone}
+            onChange={(event) => setPhone(event.target.value.replace(/\D/g, "").slice(0, 8))}
+            placeholder="17123456"
+            aria-label="Mobile number"
+            className="cash-find"
+          />
+        ) : null}
+        {dish ? (
+          <div className="grid gap-2 px-4 py-3" data-new-dish="">
+            <p className="cash-hint">
+              {dish === "name"
+                ? "Type the dish name. Enter continues."
+                : dish === "price"
+                  ? "Type the price in Nu. Enter continues."
+                  : dish === "outlet"
+                    ? "Left and right choose Cafe or Kitchen. Enter saves it on this table."
+                    : "Enter the owner PIN."}
+            </p>
+            {dish === "name" ? (
+              <input data-new-dish="" autoFocus value={dishName} onChange={(event) => setDishName(event.target.value.slice(0, 40))} placeholder="Dish name" aria-label="Dish name" className="cash-find" />
+            ) : null}
+            {dish === "price" ? (
+              <input data-new-dish="" autoFocus inputMode="numeric" value={dishPrice} onChange={(event) => setDishPrice(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="0" aria-label="Price" className="cash-find" />
+            ) : null}
+            {dish === "outlet" ? (
+              <div className="cash-places" role="tablist" aria-label="Counter">
+                <button type="button" aria-selected={dishOutlet === "cafe"} onClick={() => setDishOutlet("cafe")}>Cafe</button>
+                <button type="button" aria-selected={dishOutlet === "restaurant"} onClick={() => setDishOutlet("restaurant")}>Kitchen</button>
+              </div>
+            ) : null}
+            {dish === "pin" ? (
+              <input data-new-dish="" autoFocus value={dishPin} onChange={(event) => setDishPin(event.target.value)} placeholder="Owner PIN" aria-label="Owner PIN" className="cash-find till-secret" />
+            ) : null}
+          </div>
+        ) : null}
         <ul className="cash-menu-list">
-          {rows.length ? null : <li className="cash-hint">No match.</li>}
-          {rows.map((item) => {
-            const picked = rows[Math.min(at, Math.max(rows.length - 1, 0))]?.id === item.id;
-            return (
-              <li key={item.id}>
-                <button type="button" data-menu-item={item.id} data-pick={picked ? "1" : "0"} onClick={() => onAdd(item)}>
+          {phoneFor != null || dish ? null : pane === "food" ? (
+            <li>
+              <button type="button" onClick={() => setDish("name")}>
+                <span>
+                  New dish
+                  <small>Save it on the menu</small>
+                </span>
+              </button>
+            </li>
+          ) : null}
+          {phoneFor != null || dish ? null : pane === "play" ? (
+            rates.length ? (
+              rates.map((rate, index) => (
+                <li key={rate.minutes}>
+                  <button
+                    type="button"
+                    data-play-item={rate.minutes}
+                    data-pick={index === Math.min(playAt, rates.length - 1) ? "1" : "0"}
+                    onClick={() => {
+                      setPhone(knownPhone);
+                      setPhoneFor(rate.minutes);
+                    }}
+                  >
                     <span>
-                      {item.name}
-                      <small>{item.category}</small>
+                      {rate.minutes} min
+                      <small>Play</small>
                     </span>
-                    <b>{formatNu(item.priceNu)}</b>
+                    <b>{formatNu(rate.amountNu)}</b>
                   </button>
-              </li>
-            );
-          })}
+                </li>
+              ))
+            ) : (
+              <li className="cash-hint">No play rates are set.</li>
+            )
+          ) : (
+            <>
+              {rows.length ? null : <li className="cash-hint">No match.</li>}
+              {rows.map((item) => {
+                const picked = rows[Math.min(at, Math.max(rows.length - 1, 0))]?.id === item.id;
+                return (
+                  <li key={item.id}>
+                    <button type="button" data-menu-item={item.id} data-pick={picked ? "1" : "0"} onClick={() => onAdd(item)}>
+                      <span>
+                        {item.name}
+                        <small>{item.category}</small>
+                      </span>
+                      <b>{formatNu(item.priceNu)}</b>
+                    </button>
+                  </li>
+                );
+              })}
+            </>
+          )}
         </ul>
       </div>
     </div>
@@ -1733,6 +2484,7 @@ function PayRail({
   venueName,
   visit,
   due,
+  charges,
   overtime,
   askTable,
   tableNo,
@@ -1741,10 +2493,12 @@ function PayRail({
   spots,
   onTable,
   onSale,
+  onAddChild,
 }: {
   venueName: string;
   visit: VisitView;
   due: number;
+  charges: { name: string; amount: number }[];
   overtime: ReturnType<typeof quoteOvertime>;
   askTable: boolean;
   tableNo: string;
@@ -1753,6 +2507,7 @@ function PayRail({
   spots: { name: string; full: boolean }[];
   onTable: (value: string) => void;
   onSale: () => void;
+  onAddChild?: () => void;
 }) {
   const itemCount = visit.lines.reduce((sum, line) => sum + line.qty, 0);
   const cafeNu = visit.lines.filter((line) => line.outlet === "cafe" && !line.paid).reduce((sum, line) => sum + line.amountNu, 0);
@@ -1770,12 +2525,25 @@ function PayRail({
           <b>{visit.phone.length === 8 ? formatPhone(visit.phone) : visit.code}</b>
         </p>
         {visit.childCount > 0 || visit.blocks.length > 0 ? (
-          <p className="cash-hint">
-            {visit.childCount} {visit.childCount === 1 ? "child" : "children"}
-            {visit.tableNo ? ` · Table ${visit.tableNo}` : ""}
-          </p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="cash-hint">
+              {visit.childCount} {visit.childCount === 1 ? "child" : "children"}
+              {visit.tableNo ? ` · ${tableLabel(visit.tableNo)}` : ""}
+            </p>
+            {onAddChild ? (
+              <button type="button" className="cash-time-key h-8 min-h-8 w-auto px-3" onClick={onAddChild}>
+                + Child
+              </button>
+            ) : null}
+          </div>
         ) : null}
-        {visit.blocks.length > 0 ? <GlowTimer end={visit.paidUntil} spanMin={playSpanMinutes(visit.blocks)} until={formatWhen(visit.paidUntil)} /> : null}
+        <p className="cash-hint">Came {formatClock(visit.createdAt)}</p>
+        {visit.receiptNo ? <p className="cash-hint">Receipt {visit.receiptNo}</p> : null}
+        {visit.leftAt ? (
+          <p className="cash-hint">Left. The clock is stopped. Pay when they are ready.</p>
+        ) : visit.blocks.length > 0 ? (
+          <BarTimer end={visit.paidUntil} spanMin={playSpanMinutes(visit.blocks)} until={formatWhen(visit.paidUntil)} />
+        ) : null}
         <hr className="cash-receipt-rule" />
         <p className="cash-receipt-row">
           <span>Lines</span>
@@ -1785,30 +2553,25 @@ function PayRail({
           <span>Items</span>
           <b className="tabular-nums">{itemCount}</b>
         </p>
-        {cafeNu > 0 ? (
-          <p className="cash-receipt-row">
-            <span>Bar</span>
-            <b className="tabular-nums">{formatNu(cafeNu)}</b>
-          </p>
-        ) : null}
-        {kitchenNu > 0 ? (
-          <p className="cash-receipt-row">
-            <span>Kitchen</span>
-            <b className="tabular-nums">{formatNu(kitchenNu)}</b>
-          </p>
-        ) : null}
-        {playNu > 0 ? (
-          <p className="cash-receipt-row">
-            <span>Play</span>
-            <b className="tabular-nums">{formatNu(playNu)}</b>
-          </p>
-        ) : null}
-        {overtime && overtime.amountNu > 0 ? (
-          <p className="cash-receipt-row">
-            <span>Extra {overtime.extraMinutes} min</span>
-            <b className="tabular-nums">{formatNu(overtime.amountNu)}</b>
-          </p>
-        ) : null}
+        {(() => {
+          const tiles = [
+            playNu > 0 ? { kind: "play", label: "Play", amount: playNu } : null,
+            cafeNu > 0 ? { kind: "cafe", label: "Cafe", amount: cafeNu } : null,
+            kitchenNu > 0 ? { kind: "bar", label: "Bar", amount: kitchenNu } : null,
+            overtime && overtime.amountNu > 0 ? { kind: "extra", label: `Extra ${overtime.extraMinutes} min`, amount: overtime.amountNu } : null,
+          ].flatMap((tile) => (tile ? [tile] : []));
+          if (!tiles.length) return null;
+          return (
+            <div className="grid grid-cols-2 gap-2">
+              {tiles.map((tile) => (
+                <div key={tile.kind} data-bill-card="" data-kind={tile.kind} className="rounded-lg px-3 py-2">
+                  <p className="text-xs font-medium text-foreground/70">{tile.label}</p>
+                  <p className="font-medium tabular-nums">{formatNu(tile.amount)}</p>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
         {askTable ? (
           <div className="cash-field">
             <span>Table</span>
@@ -1844,41 +2607,136 @@ function PayRail({
           </div>
         ) : null}
         {askTable ? (
-          <p className="cash-hint">{tableError || "Left and right move the tables. Type your own spot when people are standing. Enter prints the bar ticket, then the kitchen."}</p>
+          <p className="cash-hint">{tableError || "Left and right move the tables. Type Standing when they have no table. Enter prints the tickets and holds this name. Alt+S tenders when they are done."}</p>
         ) : null}
         {overtime ? <p className="cash-hint">{overtimeSentence(overtime)}</p> : null}
+        {charges.map((row) => (
+          <p key={row.name} className="cash-receipt-row">
+            <span>{row.name}</span>
+            <b className="tabular-nums">{formatNu(row.amount)}</b>
+          </p>
+        ))}
         <hr className="cash-receipt-rule" />
         <p className="cash-receipt-total">
           <span>Due</span>
           <b className="tabular-nums">{formatNu(due)}</b>
         </p>
-        {due > 0 || askTable ? (
-          <div className="cash-go">
-            <button type="button" className="cash-cash" onClick={onSale}>
-              {askTable ? "Print tickets" : `Tender ${formatNu(due)}`}
-            </button>
-          </div>
+        {(visit.childCount > 0 || visit.blocks.length > 0) && !visit.leftAt ? (
+          <p className="cash-hint">Finish stops the clock and holds the bill. Pay is separate, when they stop talking.</p>
         ) : null}
       </div>
+        {due > 0 || askTable || ((visit.childCount > 0 || visit.blocks.length > 0) && !visit.leftAt && !overtime) ? (
+        <div className="cash-go">
+          <button type="button" className="cash-cash" onClick={onSale}>
+            {askTable
+              ? "Print tickets"
+              : (visit.childCount > 0 || visit.blocks.length > 0) && !visit.leftAt
+                ? "Finish"
+                : `Pay ${formatNu(due)}`}
+          </button>
+        </div>
+      ) : null}
     </aside>
   );
 }
 
-function LineQty({
-  lineId,
-  delta,
-  label,
+function QtyField({
+  line,
   onQty,
+  onBelowFired,
 }: {
-  lineId: number;
-  delta: number;
-  label: string;
-  onQty: () => void;
+  line: VisitView["lines"][number];
+  onQty: (line: VisitView["lines"][number], delta: number) => void;
+  onBelowFired: (next: number) => void;
 }) {
+  const [text, setText] = useState(String(line.qty));
+  useEffect(() => {
+    setText(String(line.qty));
+  }, [line.qty]);
+
+  function apply(nextQty: number) {
+    const next = Math.round(nextQty);
+    if (!Number.isFinite(next) || next === line.qty) {
+      setText(String(line.qty));
+      return;
+    }
+    if (next < line.firedQty) {
+      setText(String(line.qty));
+      onBelowFired(Math.max(0, next));
+      return;
+    }
+    onQty(line, next - line.qty);
+  }
+
   return (
-    <Button type="button" size="icon-xs" variant="outline" aria-label={delta < 0 ? "Remove one" : "Add one"} data-qty-line={lineId} data-delta={delta} onClick={onQty}>
-      {label}
-    </Button>
+    <Input
+      data-qty-key={lineKeyOf(line)}
+      inputMode="numeric"
+      aria-label={`Quantity for ${line.name}`}
+      value={text}
+      className="h-7 w-12 px-1 text-center tabular-nums"
+      onChange={(event) => setText(event.target.value.replace(/\D/g, "").slice(0, 2))}
+      onBlur={() => apply(Number(text))}
+      onKeyDown={(event) => {
+        if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+          event.preventDefault();
+          event.stopPropagation();
+          const step = event.key === "ArrowUp" ? 1 : -1;
+          apply(line.qty + step);
+          return;
+        }
+        if (event.key === "Enter") {
+          event.preventDefault();
+          event.stopPropagation();
+          apply(Number(text));
+          event.currentTarget.blur();
+        }
+      }}
+    />
+  );
+}
+
+function BackOfficeButton({ role }: { role: Role }) {
+  const [open, setOpen] = useState(false);
+  if (role === "admin") {
+    return (
+      <Button type="button" variant="outline" className="h-10 w-10 shrink-0 px-0" aria-label="Back office" onClick={() => { window.location.href = "/admin"; }}>
+        <BurgerMark />
+      </Button>
+    );
+  }
+  return (
+    <>
+      <Button type="button" variant="outline" className="h-10 w-10 shrink-0 px-0" aria-label="Back office" onClick={() => setOpen(true)}>
+        <BurgerMark />
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Back office</DialogTitle>
+            <DialogDescription>Enter the owner PIN or password.</DialogDescription>
+          </DialogHeader>
+          <form action={openBackOfficeAction} className="grid gap-3">
+            <Field label="Owner PIN">
+              <Input name="secret" autoFocus autoComplete="off" className="till-secret h-11" />
+            </Field>
+            <Button type="submit" className="h-11">
+              Open
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function BurgerMark() {
+  return (
+    <span className="flex w-4 flex-col gap-1" aria-hidden>
+      <span className="block h-0.5 bg-current" />
+      <span className="block h-0.5 bg-current" />
+      <span className="block h-0.5 bg-current" />
+    </span>
   );
 }
 

@@ -18,6 +18,7 @@ import type {
   VisitView,
 } from "@/lib/types";
 import { bankFromJournal, knownBank } from "@/lib/pay-banks";
+import { chargeRatesOf, parsePercent, quoteCharges, readPercent } from "@/lib/charges";
 import { canFloorDrop, canLeaveOnTime, isPlayVisit, playIsOvertime, unpaidFood, unpaidPlay } from "@/lib/visit-rules";
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -54,6 +55,7 @@ export async function getSettings(): Promise<Settings> {
     playBlurb: read("play_blurb"),
     eatBlurb: read("eat_blurb"),
     rates,
+    extraPerMinNu: Math.max(0, Math.round(Number(read("extra_per_min_nu")) || 0)),
     ratesAreSamples: read("rates_are_samples") === "1",
     menuIsSample: read("menu_is_sample") === "1",
     bankPayload: read("bank_payload"),
@@ -65,7 +67,21 @@ export async function getSettings(): Promise<Settings> {
     receiptThanks: read("receipt_thanks") || "Thank you",
     receiptRules: read("receipt_rules"),
     journalScan: read("journal_scan") === "1",
+    nextReceipt: Math.max(1, Math.round(Number(read("next_receipt")) || 1)),
+    scOn: read("sc_on") === "1",
+    scPercent: readPercent(read("sc_percent"), 10),
+    gstOn: read("gst_on") === "1",
+    gstPercent: readPercent(read("gst_percent"), 5),
   };
+}
+
+export async function saveCharges(input: { scOn: boolean; scPercent: number; gstOn: boolean; gstPercent: number }) {
+  const scPercent = parsePercent(input.scPercent);
+  const gstPercent = parsePercent(input.gstPercent);
+  await putSetting("sc_on", input.scOn ? "1" : "0");
+  await putSetting("sc_percent", String(scPercent));
+  await putSetting("gst_on", input.gstOn ? "1" : "0");
+  await putSetting("gst_percent", String(gstPercent));
 }
 
 export async function saveVenue(input: {
@@ -104,6 +120,12 @@ export async function saveRates(rates: Rate[]) {
   if (clean.length === 0) throw new Error("Add at least one play rate between 30 and 120 minutes.");
   await putSetting("rates", JSON.stringify(clean));
   await putSetting("rates_are_samples", "0");
+}
+
+export async function saveExtraPerMin(amountNu: number) {
+  const nu = Math.round(amountNu);
+  if (!Number.isFinite(nu) || nu < 0 || nu > 500) throw new Error("Enter the extra-minute price from 0 to 500.");
+  await putSetting("extra_per_min_nu", String(nu));
 }
 
 export async function saveBank(input: { payload: string; account: string; payee: string; city: string }) {
@@ -219,6 +241,15 @@ export async function addCategory(name: string, outlet: Outlet) {
   await query().exec("INSERT INTO menu_categories (name, outlet, sort) VALUES (?, ?, 9)", [clean, outlet]);
 }
 
+export async function counterCategory(outlet: Outlet): Promise<number> {
+  const existing = await query().one<{ id: number }>(
+    "SELECT id FROM menu_categories WHERE outlet = ? AND name = 'Counter' ORDER BY id LIMIT 1",
+    [outlet],
+  );
+  if (existing) return existing.id;
+  return query().insert("INSERT INTO menu_categories (name, outlet, sort) VALUES ('Counter', ?, 8)", [outlet]);
+}
+
 type VisitRow = {
   id: number;
   client_key: string | null;
@@ -229,8 +260,10 @@ type VisitRow = {
   status: "open" | "settled";
   created_at: string;
   paid_until: string;
+  left_at: string | null;
   closed_at: string | null;
   table_no: string;
+  receipt_no: number | null;
 };
 
 type BlockRow = {
@@ -255,6 +288,7 @@ type LineRow = {
   outlet: Outlet;
   paid: number;
   fired_qty: number;
+  delivered_qty: number;
 };
 
 type PayRow = {
@@ -292,7 +326,7 @@ async function hydrateMany(rows: VisitRow[]): Promise<VisitView[]> {
       ids,
     ),
     query().many<LineRow>(
-      `SELECT visit_id, id, client_key, name, qty, unit_nu, amount_nu, outlet, paid, fired_qty
+      `SELECT visit_id, id, client_key, name, qty, unit_nu, amount_nu, outlet, paid, fired_qty, delivered_qty
        FROM tab_lines WHERE visit_id IN (${marks}) ORDER BY id`,
       ids,
     ),
@@ -306,7 +340,17 @@ async function hydrateMany(rows: VisitRow[]): Promise<VisitView[]> {
   const blockBag = grouped(blocks);
   const lineBag = grouped(lines);
   const payBag = grouped(payments);
-  return rows.map((row) => toVisit(row, blockBag.get(row.id) ?? [], lineBag.get(row.id) ?? [], payBag.get(row.id) ?? [], settings?.rates ?? null));
+  return rows.map((row) =>
+    toVisit(
+      row,
+      blockBag.get(row.id) ?? [],
+      lineBag.get(row.id) ?? [],
+      payBag.get(row.id) ?? [],
+      settings?.rates ?? null,
+      settings?.extraPerMinNu ?? 0,
+      chargeRatesOf(settings),
+    ),
+  );
 }
 
 async function hydrate(row: VisitRow): Promise<VisitView> {
@@ -314,7 +358,15 @@ async function hydrate(row: VisitRow): Promise<VisitView> {
   return view!;
 }
 
-function toVisit(row: VisitRow, blocks: BlockRow[], lines: LineRow[], payments: PayRow[], rates: Rate[] | null): VisitView {
+function toVisit(
+  row: VisitRow,
+  blocks: BlockRow[],
+  lines: LineRow[],
+  payments: PayRow[],
+  rates: Rate[] | null,
+  extraPerMinNu = 0,
+  charges = chargeRatesOf(null),
+): VisitView {
   const mappedLines: TabLine[] = lines.map((line) => ({
     id: line.id,
     lineKey: line.client_key || `line:${line.id}`,
@@ -325,6 +377,7 @@ function toVisit(row: VisitRow, blocks: BlockRow[], lines: LineRow[], payments: 
     outlet: line.outlet,
     paid: line.paid === 1,
     firedQty: line.fired_qty ?? 0,
+    deliveredQty: line.delivered_qty ?? 0,
   }));
   const mappedBlocks = blocks.map((block) => ({
     id: block.id,
@@ -335,11 +388,15 @@ function toVisit(row: VisitRow, blocks: BlockRow[], lines: LineRow[], payments: 
     extendsTo: block.extends_to,
     createdAt: block.created_at,
   }));
-  const overtime = row.status === "open" && rates && mappedBlocks.length > 0 ? quoteOvertime(row.paid_until, rates) : null;
-  const dueNu =
+  const asOf = row.left_at ? new Date(row.left_at).getTime() : undefined;
+  const overtime =
+    row.status === "open" && rates && mappedBlocks.length > 0 ? quoteOvertime(row.paid_until, rates, asOf, extraPerMinNu) : null;
+  const dueNu = quoteCharges(
     mappedBlocks.filter((block) => !block.paid).reduce((sum, block) => sum + block.amountNu, 0) +
-    mappedLines.filter((line) => !line.paid).reduce((sum, line) => sum + line.amountNu, 0) +
-    (overtime?.amountNu ?? 0);
+      mappedLines.filter((line) => !line.paid).reduce((sum, line) => sum + line.amountNu, 0) +
+      (overtime?.amountNu ?? 0),
+    charges,
+  ).dueNu;
   return {
     id: row.id,
     clientKey: row.client_key || `server:${row.id}`,
@@ -350,8 +407,10 @@ function toVisit(row: VisitRow, blocks: BlockRow[], lines: LineRow[], payments: 
     status: row.status,
     createdAt: row.created_at,
     paidUntil: row.paid_until,
+    leftAt: row.left_at,
     closedAt: row.closed_at,
     tableNo: row.table_no ?? "",
+    receiptNo: row.receipt_no ?? null,
     blocks: mappedBlocks,
     lines: mappedLines,
     payments: payments.map((payment) => ({
@@ -371,7 +430,7 @@ function toVisit(row: VisitRow, blocks: BlockRow[], lines: LineRow[], payments: 
 
 const VISIT_SQL = `
   SELECT v.id, v.client_key, v.short_code, g.phone, g.name AS guardian_name, v.child_count, v.status,
-         v.created_at, v.paid_until, v.closed_at, v.table_no
+         v.created_at, v.paid_until, v.left_at, v.closed_at, v.table_no, v.receipt_no
   FROM visits v
   JOIN guardians g ON g.id = v.guardian_id
 `;
@@ -412,6 +471,47 @@ export async function searchVisit(term: string): Promise<VisitView | null> {
   if (open) return open;
   const row = await query().one<VisitRow>(`${VISIT_SQL} WHERE g.phone = ? ORDER BY v.id DESC`, [phone]);
   return row ? hydrate(row) : null;
+}
+
+export type VisitHit = {
+  code: string;
+  phone: string;
+  status: "open" | "settled";
+  childCount: number;
+  tableNo: string;
+  createdAt: string;
+  dueNu: number;
+  kotQty: number;
+  botQty: number;
+};
+
+export async function searchHits(term: string): Promise<VisitHit[]> {
+  const raw = term.trim();
+  if (!raw) return [];
+  const code = raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const phone = raw.replace(/\D/g, "");
+  const text = `%${raw.replace(/[%_]/g, "")}%`;
+  const rows = await query().many<VisitRow>(
+    `${VISIT_SQL}
+     WHERE (? <> '' AND v.short_code ILIKE ?)
+        OR (? <> '' AND g.phone LIKE ?)
+        OR COALESCE(v.table_no, '') ILIKE ?
+     ORDER BY CASE WHEN v.status = 'open' THEN 0 ELSE 1 END, v.id DESC
+     LIMIT 8`,
+    [code, `${code}%`, phone, `${phone}%`, text],
+  );
+  const visits = await hydrateMany(rows);
+  return visits.map((visit) => ({
+    code: visit.code,
+    phone: visit.phone,
+    status: visit.status,
+    childCount: visit.childCount,
+    tableNo: visit.tableNo,
+    createdAt: visit.createdAt,
+    dueNu: visit.dueNu,
+    kotQty: visit.lines.filter((line) => line.outlet === "restaurant").reduce((sum, line) => sum + line.qty, 0),
+    botQty: visit.lines.filter((line) => line.outlet === "cafe").reduce((sum, line) => sum + line.qty, 0),
+  }));
 }
 
 export async function listOpenVisits(): Promise<VisitView[]> {
@@ -509,19 +609,42 @@ async function requireOpen(visitId: number): Promise<VisitView> {
   return visit;
 }
 
-export async function addPlayBlock(visitId: number, minutes: number): Promise<VisitView> {
+export async function addPlayBlock(visitId: number, minutes: number, phone = ""): Promise<VisitView> {
   const visit = await requireOpen(visitId);
   const rate = await rateFor(minutes);
+  const digits = phone.replace(/\D/g, "");
+  if (phone && digits.length !== 8) throw new Error("Enter an 8-digit phone number.");
+  if (digits) {
+    const other = await findOpenByPhone(digits);
+    if (other && other.id !== visit.id) throw new Error(`This phone already has an open visit, ${other.code}.`);
+  }
   const created = nowIso();
   const base = new Date(visit.paidUntil).getTime() > Date.now() ? visit.paidUntil : created;
   const extendsTo = addMinutes(base, rate.minutes);
-  await query().exec(
-    `INSERT INTO play_blocks
-     (visit_id, minutes, amount_nu, paid, prior_until, extends_to, created_at)
-     VALUES (?, ?, ?, 0, ?, ?, ?)`,
-    [visitId, rate.minutes, rate.amountNu, visit.paidUntil, extendsTo, created],
-  );
-  await query().exec("UPDATE visits SET paid_until = ? WHERE id = ?", [extendsTo, visitId]);
+  const children = digits ? Math.max(visit.childCount, 1) : visit.childCount;
+  await tx(async (database) => {
+    if (digits && visit.phone !== digits) {
+      const guardian = await database.one<{ id: number }>("SELECT id FROM guardians WHERE phone = ?", [digits]);
+      if (guardian) {
+        await database.exec("UPDATE visits SET guardian_id = ? WHERE id = ?", [guardian.id, visitId]);
+      } else if (visit.phone.startsWith("F")) {
+        await database.exec(
+          "UPDATE guardians SET phone = ?, name = CASE WHEN name = 'Walk-in' THEN '' ELSE name END WHERE id = (SELECT guardian_id FROM visits WHERE id = ?)",
+          [digits, visitId],
+        );
+      } else {
+        const guardianId = await database.insert("INSERT INTO guardians (phone, name, created_at) VALUES (?, '', ?)", [digits, created]);
+        await database.exec("UPDATE visits SET guardian_id = ? WHERE id = ?", [guardianId, visitId]);
+      }
+    }
+    await database.exec(
+      `INSERT INTO play_blocks
+       (visit_id, minutes, amount_nu, paid, prior_until, extends_to, created_at)
+       VALUES (?, ?, ?, 0, ?, ?, ?)`,
+      [visitId, rate.minutes, rate.amountNu, visit.paidUntil, extendsTo, created],
+    );
+    await database.exec("UPDATE visits SET paid_until = ?, child_count = ? WHERE id = ?", [extendsTo, children, visitId]);
+  });
   return (await getVisitById(visitId))!;
 }
 
@@ -578,6 +701,15 @@ async function closeVisit(database: Query, visitId: number) {
   ]);
 }
 
+export async function holdPlay(visitId: number): Promise<VisitView> {
+  const visit = await requireOpen(visitId);
+  if (!isPlayVisit(visit)) throw new Error("This bill has no play time.");
+  if (!visit.leftAt) {
+    await query().exec("UPDATE visits SET left_at = ? WHERE id = ?", [nowIso(), visitId]);
+  }
+  return (await getVisitById(visitId))!;
+}
+
 export async function leaveOnTime(visitId: number, actor: TillActor): Promise<VisitView> {
   const visit = await requireOpen(visitId);
   if (!canLeaveOnTime(visit)) throw new Error("Take payment before they leave, or ask a manager to void the bill.");
@@ -603,7 +735,9 @@ export async function cancelHold(visitId: number, actor: TillActor): Promise<Vis
 export async function voidVisit(visitId: number, actor: TillActor): Promise<VisitView> {
   const visit = await requireOpen(visitId);
   const settings = await getSettings();
-  const quote = playIsOvertime(visit) ? quoteOvertime(visit.paidUntil, settings.rates) : null;
+  const quote = playIsOvertime(visit)
+    ? quoteOvertime(visit.paidUntil, settings.rates, visit.leftAt ? new Date(visit.leftAt).getTime() : undefined, settings.extraPerMinNu)
+    : null;
   const wiped = unpaidFood(visit) + unpaidPlay(visit) + (quote?.amountNu ?? 0);
   await tx(async (database) => {
     await writeTillEvent(database, visit, actor, "void", wiped, "Void");
@@ -621,7 +755,12 @@ export async function waiveOvertime(visitId: number, actor: TillActor): Promise<
     throw new Error("Take payment for the bill first. A manager can only make the overtime free.");
   }
   const settings = await getSettings();
-  const quote = quoteOvertime(visit.paidUntil, settings.rates);
+  const quote = quoteOvertime(
+    visit.paidUntil,
+    settings.rates,
+    visit.leftAt ? new Date(visit.leftAt).getTime() : undefined,
+    settings.extraPerMinNu,
+  );
   await tx(async (database) => {
     await writeTillEvent(database, visit, actor, "waive", quote?.amountNu ?? 0, "Overtime free");
     await closeVisit(database, visitId);
@@ -750,6 +889,23 @@ export async function saveKot(visitId: number, tableNo: string, lineIds: number[
   return (await getVisitById(visitId))!;
 }
 
+export async function deliverKot(visitId: number, lineIds: number[]): Promise<VisitView> {
+  await requireOpen(visitId);
+  let marked = 0;
+  for (const id of lineIds) {
+    const line = await query().one<{ outlet: Outlet; fired_qty: number; delivered_qty: number }>(
+      "SELECT outlet, fired_qty, delivered_qty FROM tab_lines WHERE visit_id = ? AND id = ?",
+      [visitId, id],
+    );
+    if (!line || line.outlet !== "restaurant") continue;
+    if ((line.fired_qty ?? 0) <= (line.delivered_qty ?? 0)) continue;
+    await query().exec("UPDATE tab_lines SET delivered_qty = fired_qty WHERE visit_id = ? AND id = ?", [visitId, id]);
+    marked += 1;
+  }
+  if (!marked) throw new Error("There is no printed kitchen ticket to mark delivered.");
+  return (await getVisitById(visitId))!;
+}
+
 export async function changeLineQty(lineId: number, delta: number): Promise<VisitView> {
   const line = await query().one<{ id: number; visit_id: number; qty: number; unit_nu: number; paid: number; fired_qty: number }>(
     "SELECT id, visit_id, qty, unit_nu, paid, fired_qty FROM tab_lines WHERE id = ?",
@@ -863,16 +1019,23 @@ export async function settleVisit(
   pay: PayMethod | { cashNu: number; bankNu: number },
   journal = "",
   payBank = "",
+  receiptNo = 0,
 ): Promise<VisitView> {
   const visit = await requireOpen(visitId);
   const foodDue = visit.lines.filter((line) => !line.paid).reduce((sum, line) => sum + line.amountNu, 0);
   const playDue = visit.blocks.filter((block) => !block.paid).reduce((sum, block) => sum + block.amountNu, 0);
   const settings = await getSettings();
-  const quote = quoteOvertime(visit.paidUntil, settings.rates);
+  const quote = quoteOvertime(
+    visit.paidUntil,
+    settings.rates,
+    visit.leftAt ? new Date(visit.leftAt).getTime() : undefined,
+    settings.extraPerMinNu,
+  );
   if (quote && quote.extraMinutes > 0 && quote.blocks.length === 0) {
     throw new Error(`They stayed ${quote.extraMinutes} min past play time. Set a play rate before closing.`);
   }
-  const due = foodDue + playDue + (quote?.amountNu ?? 0);
+  const charges = quoteCharges(foodDue + playDue + (quote?.amountNu ?? 0), chargeRatesOf(settings));
+  const due = charges.dueNu;
   const parts = splitParts(due, pay);
   const pot = { cash: parts.cashNu, bank: parts.bankNu };
   const ref = journal.trim();
@@ -890,9 +1053,32 @@ export async function settleVisit(
       await recordOvertime(database, visit, quote);
       await payKind(database, visitId, "extension", quote.amountNu, pot, ref, payBank);
     }
-    await database.exec("UPDATE visits SET status = 'settled', closed_at = ? WHERE id = ?", [closed, visitId]);
+    if (charges.serviceNu > 0) await payKind(database, visitId, "service", charges.serviceNu, pot, ref, payBank);
+    if (charges.gstNu > 0) await payKind(database, visitId, "gst", charges.gstNu, pot, ref, payBank);
+    const number = await takeReceiptNo(database, receiptNo);
+    await database.exec("UPDATE visits SET receipt_no = ?, status = 'settled', closed_at = ? WHERE id = ?", [
+      number,
+      closed,
+      visitId,
+    ]);
   });
   return (await getVisitById(visitId))!;
+}
+
+async function takeReceiptNo(database: Query, preferred = 0): Promise<number> {
+  const row = await database.one<{ value: string }>("SELECT value FROM settings WHERE key = 'next_receipt'");
+  const next = Math.max(1, Math.round(Number(row?.value) || 1));
+  let chosen = next;
+  if (preferred > 0) {
+    const used = await database.one<{ id: number }>("SELECT id FROM visits WHERE receipt_no = ?", [preferred]);
+    if (!used) chosen = preferred;
+  }
+  const following = Math.max(next, chosen + 1);
+  await database.exec(
+    "INSERT INTO settings (key, value) VALUES ('next_receipt', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+    [String(following)],
+  );
+  return chosen;
 }
 
 function splitParts(due: number, pay: PayMethod | { cashNu: number; bankNu: number }): { cashNu: number; bankNu: number } {
@@ -1009,7 +1195,7 @@ export async function listRecentTransactions(limit = 40): Promise<RecentTxn[]> {
     .slice(0, limit);
 }
 
-export async function dayTotals(): Promise<{ totalNu: number; playNu: number; foodNu: number }> {
+export async function dayTotals(): Promise<{ totalNu: number; playNu: number; foodNu: number; kotNu: number; botNu: number }> {
   const range = thimphuDayRange();
   const row = await query().one<{ total: number; play: number; food: number }>(
     `SELECT
@@ -1020,10 +1206,20 @@ export async function dayTotals(): Promise<{ totalNu: number; playNu: number; fo
      WHERE created_at >= ? AND created_at < ?`,
     [range.start, range.end],
   );
+  const food = await query().one<{ kot: number; bot: number }>(
+    `SELECT
+       COALESCE(SUM(amount_nu) FILTER (WHERE outlet = 'restaurant' AND paid = 1), 0) AS kot,
+       COALESCE(SUM(amount_nu) FILTER (WHERE outlet = 'cafe' AND paid = 1), 0) AS bot
+     FROM tab_lines
+     WHERE created_at >= ? AND created_at < ?`,
+    [range.start, range.end],
+  );
   return {
     totalNu: Number(row?.total ?? 0),
     playNu: Number(row?.play ?? 0),
     foodNu: Number(row?.food ?? 0),
+    kotNu: Number(food?.kot ?? 0),
+    botNu: Number(food?.bot ?? 0),
   };
 }
 

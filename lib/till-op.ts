@@ -1,3 +1,4 @@
+import { chargeDefaults, quoteCharges, type ChargeRates } from "@/lib/charges";
 import { addMinutes } from "@/lib/format";
 import { quoteOvertime } from "@/lib/overtime";
 import type { MenuItem, Outlet, PayMethod, PaymentRow, Rate, TabLine, VisitView } from "@/lib/types";
@@ -28,15 +29,17 @@ export type TillOp = {
       bankNu?: number;
     }
   | { kind: "addChildren"; childCount: number }
-  | { kind: "addPlay"; minutes: number }
+  | { kind: "addPlay"; minutes: number; phone?: string }
   | { kind: "removePlay" }
+  | { kind: "holdPlay" }
   | { kind: "saveKot"; tableNo: string; lineKeys: string[] }
+  | { kind: "deliverKot"; lineKeys: string[] }
   | { kind: "leave" }
   | { kind: "cancel" }
   | { kind: "waive"; secret: string }
   | { kind: "voidVisit"; secret: string }
   | { kind: "voidLine"; lineKey: string; nextQty: number; secret: string }
-  | { kind: "settle"; method: TillPay; journal: string; payBank: string; cashNu?: number; bankNu?: number }
+  | { kind: "settle"; method: TillPay; journal: string; payBank: string; cashNu?: number; bankNu?: number; receiptNo?: number }
 );
 
 export function localCode(): string {
@@ -52,13 +55,27 @@ export function lineKeyOf(line: TabLine): string {
   return line.lineKey || `line:${line.id}`;
 }
 
-export function applyOps(visits: VisitView[], ops: TillOp[], menu: MenuItem[], rates: Rate[]): VisitView[] {
+export function applyOps(
+  visits: VisitView[],
+  ops: TillOp[],
+  menu: MenuItem[],
+  rates: Rate[],
+  extraPerMinNu = 0,
+  charges: ChargeRates = chargeDefaults,
+): VisitView[] {
   let next = visits.map(cloneVisit);
-  for (const op of ops) next = applyOne(next, op, menu, rates);
+  for (const op of ops) next = applyOne(next, op, menu, rates, extraPerMinNu, charges);
   return next;
 }
 
-function applyOne(visits: VisitView[], op: TillOp, menu: MenuItem[], rates: Rate[]): VisitView[] {
+function applyOne(
+  visits: VisitView[],
+  op: TillOp,
+  menu: MenuItem[],
+  rates: Rate[],
+  extraPerMinNu = 0,
+  charges: ChargeRates = chargeDefaults,
+): VisitView[] {
   if (op.kind === "checkIn") {
     const phone = op.phone.replace(/\D/g, "");
     const existing = visits.find((visit) => visit.status === "open" && visit.phone === phone);
@@ -68,26 +85,58 @@ function applyOne(visits: VisitView[], op: TillOp, menu: MenuItem[], rates: Rate
   if (op.kind === "addItem" && !visits.some((visit) => visitKey(visit) === op.visitKey)) {
     return [...visits, walkIn(op, menu)];
   }
-  return visits.map((visit) => (visitKey(visit) === op.visitKey ? change(visit, op, menu, rates) : visit));
+  if (op.kind === "addPlay" && op.phone) {
+    const phone = op.phone.replace(/\D/g, "");
+    if (phone.length !== 8) throw new Error("Enter an 8-digit phone number.");
+    const clash = visits.find((visit) => visit.status === "open" && visit.phone === phone && visitKey(visit) !== op.visitKey);
+    if (clash) throw new Error(`This phone already has an open visit, ${clash.code}.`);
+  }
+  return visits.map((visit) => (visitKey(visit) === op.visitKey ? change(visit, op, menu, rates, extraPerMinNu, charges) : visit));
 }
 
-function change(visit: VisitView, op: TillOp, menu: MenuItem[], rates: Rate[]): VisitView {
+function change(
+  visit: VisitView,
+  op: TillOp,
+  menu: MenuItem[],
+  rates: Rate[],
+  extraPerMinNu = 0,
+  charges: ChargeRates = chargeDefaults,
+): VisitView {
+  const cost = (next: VisitView) => price(next, rates, extraPerMinNu, charges);
   if (visit.status !== "open") throw new Error("This visit is already closed.");
-  if (op.kind === "addItem") return price(addLine(visit, op, menu), rates);
-  if (op.kind === "qty") return price(qty(visit, op.lineKey, op.delta), rates);
-  if (op.kind === "removeLine") return price(dropLine(visit, op.lineKey), rates);
+  if (op.kind === "addItem") return cost(addLine(visit, op, menu));
+  if (op.kind === "qty") return cost(qty(visit, op.lineKey, op.delta));
+  if (op.kind === "removeLine") return cost(dropLine(visit, op.lineKey));
   if (op.kind === "addChildren") {
     const more = Math.round(op.childCount);
     if (more < 1) throw new Error("Enter how many more children are playing.");
     const next = visit.childCount + more;
     if (next > 12) throw new Error("A visit can hold up to 12 children.");
-    return price({ ...visit, childCount: next }, rates);
+    return cost({ ...visit, childCount: next });
   }
-  if (op.kind === "addPlay") return price(addPlay(visit, op.minutes, op.at, rates), rates);
-  if (op.kind === "removePlay") return price(removePlay(visit), rates);
-  if (op.kind === "saveKot") return price(saveKot(visit, op.tableNo, op.lineKeys), rates);
-  if (op.kind === "voidLine") return price(voidLine(visit, op.lineKey, op.nextQty), rates);
-  if (op.kind === "settle") return settle(visit, op, rates);
+  if (op.kind === "addPlay") {
+    const next = addPlay(visit, op.minutes, op.at, rates);
+    const phone = op.phone?.replace(/\D/g, "") ?? "";
+    if (!phone) return cost(next);
+    return cost(
+      {
+        ...next,
+        phone,
+        childCount: Math.max(next.childCount, 1),
+        guardianName: next.guardianName === "Walk-in" ? "" : next.guardianName,
+      },
+    );
+  }
+  if (op.kind === "removePlay") return cost(removePlay(visit));
+  if (op.kind === "holdPlay") {
+    if (visit.childCount === 0 && visit.blocks.length === 0) throw new Error("This bill has no play time.");
+    if (visit.leftAt) return visit;
+    return cost({ ...visit, leftAt: op.at });
+  }
+  if (op.kind === "saveKot") return cost(saveKot(visit, op.tableNo, op.lineKeys));
+  if (op.kind === "deliverKot") return cost(deliverKot(visit, op.lineKeys));
+  if (op.kind === "voidLine") return cost(voidLine(visit, op.lineKey, op.nextQty));
+  if (op.kind === "settle") return settle(visit, op, rates, extraPerMinNu, charges);
   if (op.kind === "leave" || op.kind === "cancel" || op.kind === "waive" || op.kind === "voidVisit") {
     return { ...visit, status: "settled", closedAt: op.at, dueNu: 0, overtime: null };
   }
@@ -112,6 +161,7 @@ function checkIn(op: Extract<TillOp, { kind: "checkIn" }>, rates: Rate[]): Visit
     status: "open",
     createdAt: op.at,
     paidUntil,
+    leftAt: null,
     closedAt: null,
     tableNo: "",
     blocks: [
@@ -129,6 +179,7 @@ function checkIn(op: Extract<TillOp, { kind: "checkIn" }>, rates: Rate[]): Visit
     payments: money(tempId(`${op.visitKey}:pay`), "playtime", rate.amountNu, op),
     dueNu: 0,
     overtime: null,
+    receiptNo: null,
   };
   return price(visit, rates);
 }
@@ -147,6 +198,7 @@ function walkIn(op: Extract<TillOp, { kind: "addItem" }>, menu: MenuItem[]): Vis
     status: "open",
     createdAt: op.at,
     paidUntil: op.at,
+    leftAt: null,
     closedAt: null,
     tableNo: "",
     blocks: [],
@@ -154,6 +206,7 @@ function walkIn(op: Extract<TillOp, { kind: "addItem" }>, menu: MenuItem[]): Vis
     payments: [],
     dueNu: item.priceNu,
     overtime: null,
+    receiptNo: null,
   };
 }
 
@@ -201,7 +254,9 @@ function voidLine(visit: VisitView, key: string, nextQty: number): VisitView {
   return {
     ...visit,
     lines: visit.lines.map((item) =>
-      lineKeyOf(item) === key ? { ...item, qty: next, amountNu: next * item.unitNu, firedQty: next } : item,
+      lineKeyOf(item) === key
+        ? { ...item, qty: next, amountNu: next * item.unitNu, firedQty: next, deliveredQty: Math.min(item.deliveredQty ?? 0, next) }
+        : item,
     ),
   };
 }
@@ -250,8 +305,28 @@ function saveKot(visit: VisitView, tableNo: string, keys: string[]): VisitView {
   };
 }
 
-function settle(visit: VisitView, op: Extract<TillOp, { kind: "settle" }>, rates: Rate[]): VisitView {
-  const due = price(visit, rates).dueNu;
+function deliverKot(visit: VisitView, keys: string[]): VisitView {
+  const wanted = new Set(keys);
+  const kitchen = visit.lines.filter((line) => line.outlet === "restaurant" && wanted.has(lineKeyOf(line)) && line.firedQty > (line.deliveredQty ?? 0));
+  if (!kitchen.length) throw new Error("There is no printed kitchen ticket to mark delivered.");
+  return {
+    ...visit,
+    lines: visit.lines.map((line) =>
+      line.outlet === "restaurant" && wanted.has(lineKeyOf(line)) && line.firedQty > (line.deliveredQty ?? 0)
+        ? { ...line, deliveredQty: line.firedQty }
+        : line,
+    ),
+  };
+}
+
+function settle(
+  visit: VisitView,
+  op: Extract<TillOp, { kind: "settle" }>,
+  rates: Rate[],
+  extraPerMinNu = 0,
+  charges: ChargeRates = chargeDefaults,
+): VisitView {
+  const due = price(visit, rates, extraPerMinNu, charges).dueNu;
   return {
     ...visit,
     status: "settled",
@@ -261,6 +336,7 @@ function settle(visit: VisitView, op: Extract<TillOp, { kind: "settle" }>, rates
     lines: visit.lines.map((line) => ({ ...line, paid: true })),
     blocks: visit.blocks.map((block) => ({ ...block, paid: true })),
     payments: [...visit.payments, ...money(tempId(`${op.id}:pay`), "settle", due, op)],
+    receiptNo: op.receiptNo ?? visit.receiptNo ?? null,
   };
 }
 
@@ -302,16 +378,21 @@ function freshLine(key: string, name: string, price: number, outlet: Outlet): Ta
     outlet,
     paid: false,
     firedQty: 0,
+    deliveredQty: 0,
   };
 }
 
-function price(visit: VisitView, rates: Rate[]): VisitView {
+function price(visit: VisitView, rates: Rate[], extraPerMinNu = 0, charges: ChargeRates = chargeDefaults): VisitView {
   const play = visit.childCount > 0 || visit.blocks.length > 0;
-  const overtime = visit.status === "open" && play && visit.blocks.length > 0 ? quoteOvertime(visit.paidUntil, rates) : null;
-  const dueNu =
+  const asOf = visit.leftAt ? new Date(visit.leftAt).getTime() : undefined;
+  const overtime =
+    visit.status === "open" && play && visit.blocks.length > 0 ? quoteOvertime(visit.paidUntil, rates, asOf, extraPerMinNu) : null;
+  const dueNu = quoteCharges(
     visit.blocks.filter((block) => !block.paid).reduce((sum, block) => sum + block.amountNu, 0) +
-    visit.lines.filter((line) => !line.paid).reduce((sum, line) => sum + line.amountNu, 0) +
-    (overtime?.amountNu ?? 0);
+      visit.lines.filter((line) => !line.paid).reduce((sum, line) => sum + line.amountNu, 0) +
+      (overtime?.amountNu ?? 0),
+    charges,
+  ).dueNu;
   return { ...visit, overtime, dueNu };
 }
 

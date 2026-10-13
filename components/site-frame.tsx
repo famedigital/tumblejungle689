@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PlaytabCredit, PlaytabMark } from "@/components/playtab-mark";
 import { getSettings } from "@/lib/domain";
 
 const NAV = [
@@ -15,9 +16,7 @@ export async function SiteHeader() {
       <div className="mx-auto max-w-6xl px-4 py-3">
         <div className="flex items-center gap-3">
           <Link href="/" className="inline-flex min-w-0 items-center gap-2 font-heading text-xl text-[#146047] sm:text-2xl">
-            <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e2a008] text-sm text-[#3d2a00]">
-              TJ
-            </span>
+            <PlaytabMark size={40} />
             <span className="truncate">{settings.venueName}</span>
           </Link>
           <Link
@@ -55,7 +54,10 @@ export async function SiteFooter() {
           {settings.hours ? <p>Hours {settings.hours}</p> : null}
           {settings.phone ? <p>{settings.phone}</p> : null}
         </div>
-        <p className="max-w-sm text-[#d7f5ea]">Play photos on this site are freely licensed from Pexels.</p>
+        <div className="space-y-3">
+          <p className="max-w-sm text-[#d7f5ea]">Play photos on this site are freely licensed from Pexels.</p>
+          <PlaytabCredit className="text-[#d7f5ea]" />
+        </div>
       </div>
     </footer>
   );

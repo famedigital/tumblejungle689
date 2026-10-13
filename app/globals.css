@@ -510,29 +510,47 @@
   display: flex;
   min-height: 100dvh;
   flex-direction: column;
-  background: var(--background);
+  background: #e4ece8;
   color: var(--foreground);
 }
 .sticker-tools {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
-  gap: 1rem 1.5rem;
+  gap: 0.75rem 1rem;
   border-bottom: 1px solid var(--border);
   background: var(--card);
-  padding: 1.25rem 1.5rem;
+  padding: 0.75rem 1rem;
+}
+.sticker-id h1 {
+  font-family: var(--font-heading), serif;
+  font-size: 1.35rem;
+  line-height: 1.1;
+  color: var(--primary);
+}
+.sticker-id p {
+  font-size: 0.85rem;
+  color: var(--muted-foreground);
+}
+.sticker-note {
+  max-width: 18rem;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--muted-foreground);
 }
 .sticker-choice {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-.sticker-choice button {
-  min-height: 2.75rem;
+  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--background);
+}
+.sticker-choice button {
+  min-height: 2.75rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   padding: 0 1rem;
   font-size: 0.9rem;
   font-weight: 650;
@@ -550,15 +568,33 @@
   gap: 0.5rem;
 }
 .sticker-desk {
+  display: flex;
   flex: 1;
-  padding: 1.25rem 1.5rem 2rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2rem 1rem 3rem;
 }
 .print-sticker-sheet {
   display: flex;
   flex-wrap: wrap;
-  align-content: flex-start;
-  justify-content: flex-start;
+  align-content: center;
+  justify-content: center;
   gap: 1rem;
+}
+@media screen {
+  .sticker-desk .print-sticker {
+    width: 68mm;
+    padding: 4mm;
+    border-style: solid;
+    border-color: #d5ddd8;
+    box-shadow: 0 18px 40px rgb(28 36 32 / 14%);
+  }
+  .sticker-desk .print-sticker img {
+    width: 48mm;
+    height: 48mm;
+  }
 }
 .print-sticker {
   width: 52mm;
@@ -976,10 +1012,455 @@
 [data-touch="cashier"] {
   height: 100dvh;
   overflow: hidden;
+  background:
+    radial-gradient(900px 420px at 0% -10%, rgb(226 160 8 / 16%), transparent 55%),
+    radial-gradient(800px 480px at 100% 0%, rgb(20 96 71 / 12%), transparent 50%),
+    var(--canvas);
+}
+
+[data-surface="till"] .till-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas: "scan beside due";
+  align-items: center;
+  column-gap: 0.75rem;
+  row-gap: 0.4rem;
+}
+
+[data-surface="till"] .till-head-tools {
+  grid-template-areas:
+    "scan beside due"
+    "tools tools tools";
+}
+
+[data-surface="till"] .till-scan {
+  grid-area: scan;
+  width: auto;
+  min-width: 0;
+}
+
+[data-surface="till"] .till-beside {
+  grid-area: beside;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+[data-surface="till"] .till-status {
+  min-width: 0;
+  max-width: 14rem;
+}
+
+[data-surface="till"] .till-info {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+[data-surface="till"] .till-due {
+  grid-area: due;
+  align-self: center;
+}
+
+[data-surface="till"] .till-head .till-tools {
+  grid-area: tools;
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+[data-touch="cashier"] .till-command {
+  grid-template-areas: none;
+  grid-template-columns: minmax(13.5rem, 19rem) minmax(0, 1fr) 10.5rem;
+  grid-template-rows: auto auto auto;
+  align-items: stretch;
+  column-gap: 0.8rem;
+  row-gap: 0.35rem;
+  padding: 0.7rem 0.8rem 0.65rem;
+  border-bottom-color: transparent;
+  background:
+    linear-gradient(180deg, rgb(255 252 247 / 96%) 0%, rgb(243 236 220 / 94%) 100%);
+  box-shadow: 0 14px 36px rgb(28 36 32 / 8%);
+}
+
+[data-touch="cashier"] .till-command .till-scan {
+  position: relative;
+  grid-column: 1;
+  grid-row: 1;
+  gap: 0.45rem;
+}
+
+[data-touch="cashier"] .till-hits {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 0.3rem;
+  list-style: none;
+  border-radius: 0.9rem;
+  background: linear-gradient(180deg, #fffdf8, #f7f1e6);
+  box-shadow: 0 16px 40px rgb(28 36 32 / 16%);
+}
+
+[data-touch="cashier"] .till-hits button {
+  display: grid;
+  width: 100%;
+  gap: 0.1rem;
+  border: 0;
+  border-radius: 0.7rem;
+  background: transparent;
+  padding: 0.45rem 0.6rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+[data-touch="cashier"] .till-hits button[aria-selected="true"] {
+  background: linear-gradient(145deg, #f3fbf6, #d7ecdf);
+}
+
+[data-touch="cashier"] .till-hits strong {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.86rem;
+}
+
+[data-touch="cashier"] .till-hits strong span,
+[data-touch="cashier"] .till-hits small {
+  color: var(--ink-mute);
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+[data-touch="cashier"] .till-command .till-scan > button[aria-label="Back office"] {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.75rem;
+  background: #fff;
+}
+
+[data-touch="cashier"] .till-command .till-scan input {
+  height: 2.5rem;
+  border-color: var(--line);
+  border-right-width: 0;
+  border-radius: 0.75rem 0 0 0.75rem;
+  background-color: #fff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235c6b66' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: 0.7rem center;
+  background-size: 0.95rem;
+  padding-left: 2.05rem;
+  box-shadow: inset 0 1px 2px rgb(28 36 32 / 5%);
+}
+
+[data-touch="cashier"] .till-command .till-scan > button[type="submit"] {
+  height: 2.5rem;
+  margin-left: -0.45rem;
+  border-radius: 0 0.75rem 0.75rem 0;
+  padding-inline: 0.95rem;
+}
+
+[data-touch="cashier"] .till-command .till-beside {
+  display: contents;
+}
+
+[data-touch="cashier"] .till-command .till-status {
+  grid-column: 1;
+  grid-row: 2;
+  align-self: center;
+  max-width: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.78rem;
+  line-height: 1.25;
+}
+
+[data-touch="cashier"] .till-command .till-info {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  min-width: 0;
+}
+
+[data-touch="cashier"] .till-command .till-tools {
+  grid-column: 1 / 3;
+  grid-row: 3;
+  flex-wrap: nowrap;
+  margin-top: 0.15rem;
+  border-top: 1px solid var(--line);
+  padding-top: 0.45rem;
+}
+
+[data-touch="cashier"] .till-command .till-due {
+  grid-column: 3;
+  grid-row: 1 / span 3;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  position: relative;
+  align-self: stretch;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 1rem;
+  background: var(--pine);
+  padding: 0.85rem 0.95rem 0.7rem;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 16%),
+    0 12px 22px -16px rgb(15 74 54 / 85%);
+}
+
+[data-touch="cashier"] .till-command .till-due::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 3px;
+  background: var(--saffron);
+}
+
+[data-touch="cashier"] .till-command .till-due p {
+  color: rgb(247 244 238 / 72%);
+}
+
+[data-touch="cashier"] .till-command .till-due p:nth-child(2) {
+  margin-top: 0.2rem;
+  color: #fffdf8;
+  font-size: 1.85rem;
+  letter-spacing: -0.03em;
+}
+
+[data-touch="cashier"] .till-command .till-due p:last-child {
+  max-width: none;
+  margin-top: 0.28rem;
+  color: rgb(247 244 238 / 78%);
+}
+
+[data-touch="cashier"] .desk-meters {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.45rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+[data-touch="cashier"] .desk-meters::-webkit-scrollbar {
+  display: none;
+}
+
+[data-touch="cashier"] .desk-meter {
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 0.5rem;
+  min-width: 6.6rem;
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  background: #fff;
+  padding: 0.35rem 0.7rem 0.35rem 0.6rem;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+[data-touch="cashier"] .desk-meter:focus-visible {
+  outline: 2px solid var(--pine);
+  outline-offset: 2px;
+}
+
+[data-touch="cashier"] .desk-meter b {
+  grid-row: 1 / span 2;
+  font-family: var(--font-heading), Georgia, serif;
+  font-size: 1.45rem;
+  font-weight: 650;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--pine);
+}
+
+[data-touch="cashier"] .desk-meter span {
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+[data-touch="cashier"] .desk-meter small {
+  font-size: 0.66rem;
+  font-weight: 600;
+  line-height: 1.15;
+  color: var(--ink-mute);
+}
+
+[data-touch="cashier"] .desk-meter[data-tone="quiet"][data-alarm="ok"] b {
+  color: var(--ink-mute);
+}
+
+[data-touch="cashier"] .desk-meter[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--pine) 8%, white);
+  box-shadow: inset 0 0 0 1px var(--pine);
+}
+
+[data-touch="cashier"] .desk-meter[data-alarm="warn"] {
+  border-color: color-mix(in srgb, var(--saffron) 75%, var(--line));
+  background: color-mix(in srgb, var(--saffron) 18%, white);
+}
+
+[data-touch="cashier"] .desk-meter[data-alarm="warn"] b,
+[data-touch="cashier"] .desk-meter[data-alarm="warn"] small {
+  color: var(--saffron-ink);
+}
+
+[data-touch="cashier"] .desk-meter[data-alarm="over"] {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, white);
+  animation: hold-pulse 0.9s ease-in-out infinite;
+}
+
+[data-touch="cashier"] .desk-meter[data-alarm="over"] b,
+[data-touch="cashier"] .desk-meter[data-alarm="over"] small {
+  color: var(--danger);
+}
+
+[data-touch="cashier"] .desk-money {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.85rem;
+  margin-left: 0.15rem;
+  border-left: 1px solid var(--line);
+  padding-left: 0.85rem;
+}
+
+[data-touch="cashier"] .desk-money p {
+  display: grid;
+  gap: 0.05rem;
+  margin: 0;
+}
+
+[data-touch="cashier"] .desk-money small {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+
+[data-touch="cashier"] .desk-money b {
+  font-size: 0.92rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+[data-touch="cashier"] .desk-sync {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0 0 0 auto;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--ink-mute);
+}
+
+[data-touch="cashier"] .desk-sync i {
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: 999px;
+  background: var(--ink-mute);
+}
+
+[data-touch="cashier"] .desk-sync[data-state="saved"] {
+  color: var(--ok);
+}
+
+[data-touch="cashier"] .desk-sync[data-state="saved"] i {
+  background: var(--ok);
+}
+
+[data-touch="cashier"] .desk-sync[data-state="local"] {
+  color: var(--saffron-ink);
+}
+
+[data-touch="cashier"] .desk-sync[data-state="local"] i {
+  background: var(--saffron);
+}
+
+[data-touch="cashier"] .desk-tools {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+[data-touch="cashier"] .desk-cluster,
+[data-touch="cashier"] .desk-actions,
+[data-touch="cashier"] .desk-session {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+[data-touch="cashier"] .desk-cluster {
+  padding: 0.12rem;
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--canvas) 78%, white);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+[data-touch="cashier"] .desk-actions {
+  gap: 0.35rem;
+}
+
+[data-touch="cashier"] .desk-session {
+  gap: 0.4rem;
+  margin-left: auto;
+}
+
+[data-touch="cashier"] .desk-session form {
+  display: flex;
+}
+
+[data-touch="cashier"] .desk-staff {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+[data-touch="cashier"] .desk-staff > span {
+  display: grid;
+  width: 1.55rem;
+  height: 1.55rem;
+  place-items: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--pine) 12%, white);
+  color: var(--pine);
+  font-size: 0.72rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-touch="cashier"] .desk-meter[data-alarm="over"] {
+    animation: none;
+  }
 }
 
 [data-touch="cashier"] > header,
-[data-touch="cashier"] > .till-tools,
 [data-touch="cashier"] > .till-body {
   margin-right: 22.5rem;
 }
@@ -1007,9 +1488,86 @@
   min-height: 0;
 }
 
+[data-touch="cashier"] .cash-tabs [data-slot="tabs-list"] {
+  width: fit-content;
+  max-width: 100%;
+}
+
+[data-touch="cashier"] .cash-tabs [data-slot="tabs-trigger"] {
+  flex: none;
+  width: auto;
+}
+
+[data-touch="cashier"] .cash-tabs [data-table="1"] { --table-wash: #d7f5e3; --table-ink: #146047; }
+[data-touch="cashier"] .cash-tabs [data-table="2"] { --table-wash: #d6e8ff; --table-ink: #1d4e89; }
+[data-touch="cashier"] .cash-tabs [data-table="3"] { --table-wash: #ffe8c2; --table-ink: #8a5a00; }
+[data-touch="cashier"] .cash-tabs [data-table="4"] { --table-wash: #eadcff; --table-ink: #5b2d91; }
+[data-touch="cashier"] .cash-tabs [data-table="5"] { --table-wash: #d2f4f2; --table-ink: #0f6e6a; }
+[data-touch="cashier"] .cash-tabs [data-table="6"] { --table-wash: #ffd9e4; --table-ink: #9d2450; }
+[data-touch="cashier"] .cash-tabs [data-table="7"] { --table-wash: #ffe0cc; --table-ink: #9a3d12; }
+[data-touch="cashier"] .cash-tabs [data-table="8"] { --table-wash: #d9defa; --table-ink: #2f3d8f; }
+[data-touch="cashier"] .cash-tabs [data-table="stand"] { --table-wash: #eeeae3; --table-ink: #4a453c; }
+[data-touch="cashier"] .cash-tabs [data-table="0"] { --table-wash: #f3f1ec; --table-ink: #5c6b66; }
+
+[data-touch="cashier"] .cash-tabs [data-slot="tabs-trigger"][data-table] {
+  border-radius: 0.45rem 0.45rem 0 0;
+  background: var(--table-wash);
+  color: var(--table-ink);
+}
+
+[data-touch="cashier"] .cash-tabs [data-slot="tabs-trigger"][data-table][data-state="active"],
+[data-touch="cashier"] .cash-tabs [data-slot="tabs-trigger"][data-table][data-active] {
+  background: var(--table-ink);
+  color: #fff;
+}
+
+[data-touch="cashier"] .cash-tabs [data-table] [data-slot="badge"] {
+  background: var(--table-ink);
+  color: #fff;
+}
+
+[data-touch="cashier"] .cash-tabs [data-table][data-state="active"] [data-slot="badge"],
+[data-touch="cashier"] .cash-tabs [data-table][data-active] [data-slot="badge"] {
+  background: #fff;
+  color: var(--table-ink);
+}
+
+[data-touch="cashier"] .cash-list [data-slot="table-head"]:first-child,
+[data-touch="cashier"] .cash-list [data-slot="table-cell"]:first-child {
+  padding-left: 0.5rem;
+}
+
 [data-touch="cashier"] .cash-tabs [data-slot="tabs-content"] {
   min-height: 0;
   overflow: auto;
+}
+
+[data-touch="cashier"] [data-bill-card][data-kind="play"] { background: linear-gradient(145deg, #f3fbf6 0%, #b7e4cc 100%); }
+[data-touch="cashier"] [data-bill-card][data-kind="cafe"] { background: linear-gradient(145deg, #fff6e8 0%, #f3c98a 100%); }
+[data-touch="cashier"] [data-bill-card][data-kind="bar"] { background: linear-gradient(145deg, #f3f7ff 0%, #c5d4f6 100%); }
+[data-touch="cashier"] [data-bill-card][data-kind="extra"] { background: linear-gradient(145deg, #fff0f4 0%, #f4c2d0 100%); }
+
+[data-touch="cashier"] [data-play-card] {
+  box-shadow: 0 12px 28px rgb(28 36 32 / 10%);
+}
+
+[data-touch="cashier"] [data-play-card][data-wash="0"] { background: linear-gradient(145deg, #f3fbf6 0%, #b7e4cc 100%); }
+[data-touch="cashier"] [data-play-card][data-wash="1"] { background: linear-gradient(145deg, #fff6e8 0%, #f3c98a 100%); }
+[data-touch="cashier"] [data-play-card][data-wash="2"] { background: linear-gradient(145deg, #f3f7ff 0%, #c5d4f6 100%); }
+[data-touch="cashier"] [data-play-card][data-wash="3"] { background: linear-gradient(145deg, #fff0f4 0%, #f4c2d0 100%); }
+[data-touch="cashier"] [data-play-card][data-wash="4"] { background: linear-gradient(145deg, #f2fbff 0%, #b9e3f2 100%); }
+[data-touch="cashier"] [data-play-card][data-wash="5"] { background: linear-gradient(145deg, #f7f3ff 0%, #d4c6f6 100%); }
+[data-touch="cashier"] [data-play-card][data-wash="6"] { background: linear-gradient(145deg, #f4fff4 0%, #c6ecc0 100%); }
+[data-touch="cashier"] [data-play-card][data-wash="7"] { background: linear-gradient(145deg, #fff8f2 0%, #f6d0b8 100%); }
+
+[data-touch="cashier"] [data-play-card][data-time="ok"] .live-mini-time::after,
+[data-touch="cashier"] [data-play-card][data-time="ending"] .live-mini-time::after {
+  content: " left";
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
 }
 
 [data-touch="cashier"] .play-board {
@@ -1128,6 +1686,66 @@
   width: min(100%, 16rem);
 }
 
+[data-touch="cashier"] .live-bar {
+  display: grid;
+  gap: 0.28rem;
+  width: 100%;
+  padding: 0.45rem 0.15rem 0.15rem;
+}
+
+[data-touch="cashier"] .live-bar-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+[data-touch="cashier"] .live-bar-top span {
+  font-family: var(--font-heading);
+  font-size: 1.35rem;
+  font-variant-numeric: tabular-nums;
+}
+
+[data-touch="cashier"] .live-bar-top em {
+  font-style: normal;
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+
+[data-touch="cashier"] .live-bar-track {
+  overflow: hidden;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: rgb(28 36 32 / 8%);
+  box-shadow: inset 0 1px 2px rgb(28 36 32 / 12%);
+}
+
+[data-touch="cashier"] .live-bar-track span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-origin: left center;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #146047, #1f8a64);
+  box-shadow: 0 0 12px rgb(20 96 71 / 35%);
+}
+
+[data-touch="cashier"] .live-bar[data-phase="warn"] .live-bar-track span {
+  background: linear-gradient(90deg, #e2a008, #f0c14a);
+}
+
+[data-touch="cashier"] .live-bar[data-phase="over"] .live-bar-track span {
+  background: linear-gradient(90deg, #b42318, #e07a72);
+}
+
+[data-touch="cashier"] .live-bar small {
+  color: var(--ink-mute);
+  font-size: 0.72rem;
+}
+
 [data-touch="cashier"] .cash-phone {
   font-size: clamp(1.15rem, 2.6vh, 1.45rem);
 }
@@ -1211,13 +1829,22 @@
   background: rgb(42 18 72 / 35%);
 }
 
+[data-touch="cashier"] .cash-scrim-clear {
+  background: transparent;
+  pointer-events: none;
+}
+
+[data-touch="cashier"] .cash-scrim-clear .cash-sheet {
+  pointer-events: auto;
+}
+
 [data-touch="cashier"] .cash-sheet {
   position: absolute;
   top: 0;
   right: 0;
   bottom: 0;
   display: flex;
-  width: min(28rem, 100%);
+  width: 22.5rem;
   flex-direction: column;
   overflow: hidden;
   background: #fff;
@@ -1246,7 +1873,8 @@
   border-bottom: 1px solid var(--line);
   border-radius: 0;
   background: transparent;
-  padding: 0.7rem 1.15rem;
+  align-items: center;
+  padding: 0.4rem 1rem;
   text-align: left;
   font-size: 0.95rem;
   font-weight: 600;
@@ -1258,8 +1886,8 @@
 }
 
 [data-touch="cashier"] .cash-menu-list button small {
-  display: block;
-  margin-top: 0.1rem;
+  display: inline;
+  margin-left: 0.45rem;
   font-size: 11px;
   font-weight: 500;
   color: var(--ink-mute);
@@ -1727,6 +2355,8 @@
   top: 0;
   right: 0;
   bottom: 0;
+  display: flex;
+  flex-direction: column;
   width: 22.5rem;
   height: auto;
   min-height: 0;
@@ -1736,12 +2366,21 @@
   border: 0;
   border-left: 1px solid #e4dccb;
   border-radius: 0;
-  background: #fff;
-  box-shadow: -8px 0 24px rgb(28 36 32 / 8%);
+  background: linear-gradient(180deg, #fffdf8 0%, #fff 40%);
+  box-shadow: -18px 0 48px rgb(28 36 32 / 12%);
 }
 
 [data-touch="cashier"] .cash-paper .cash-receipt {
   flex: 1;
+  overflow: auto;
+}
+
+[data-touch="cashier"] .cash-paper > .cash-go {
+  flex: none;
+  margin: 0;
+  padding: 0.75rem 1.2rem 1rem;
+  border-top: 1px solid var(--line);
+  background: #fff;
 }
 
 [data-touch="cashier"] .cash-receipt {
@@ -2435,7 +3074,11 @@
 [data-touch="cashier"] .cash-go {
   display: grid;
   gap: 0.55rem;
-  margin-top: auto;
+  margin-top: 0;
+}
+
+[data-touch="cashier"] .cash-paper > .cash-go .cash-cash {
+  width: 100%;
 }
 
 [data-touch="cashier"] .cash-cash {
@@ -2988,7 +3631,8 @@ html[data-surface="till"],
 [data-surface="till"] .tshong-till-keys {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(4.75rem, 1fr));
-  background: #146047;
+  background: linear-gradient(180deg, #187a58 0%, #0e4b36 100%);
+  box-shadow: 0 -10px 28px rgb(14 75 54 / 18%);
 }
 
 [data-surface="till"] .tshong-fkey {

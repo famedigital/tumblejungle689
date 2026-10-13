@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PlaytabCredit } from "@/components/playtab-mark";
 
 export default function NotFound() {
   return (
@@ -8,6 +9,7 @@ export default function NotFound() {
       <Link href="/" className="text-sm font-medium text-primary">
         Back to Tumble Jungle
       </Link>
+      <PlaytabCredit className="text-muted-foreground" />
     </main>
   );
 }

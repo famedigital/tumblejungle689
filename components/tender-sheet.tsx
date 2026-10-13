@@ -100,6 +100,10 @@ export function TenderSheet({
       }
       if (event.key === "Enter") {
         event.preventDefault();
+        if (bankNu > 0 && !journal.trim()) {
+          journalRef.current?.focus();
+          return;
+        }
         const button = formRef.current?.querySelector('button[type="submit"]');
         if (button instanceof HTMLButtonElement && !button.disabled) formRef.current?.requestSubmit(button);
         return;
@@ -122,7 +126,7 @@ export function TenderSheet({
     }
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [method, onMethod, onPrint]);
+  }, [method, onMethod, onPrint, bankNu, journal]);
 
   useEffect(() => {
     if (method === "bank_qr") journalRef.current?.focus();
@@ -154,7 +158,7 @@ export function TenderSheet({
           <div className="grid content-start gap-3">
             <DialogHeader className="gap-0">
               <DialogTitle>Tender</DialogTitle>
-              <DialogDescription>B bank, C cash, S split. Enter takes the money.</DialogDescription>
+              <DialogDescription>B bank, C cash, S split. Enter types the journal number, then prints the receipt.</DialogDescription>
             </DialogHeader>
             <Card size="sm" className="gap-1">
               <CardHeader className="items-center">
