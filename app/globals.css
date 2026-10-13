@@ -1462,7 +1462,7 @@
 
 [data-touch="cashier"] > header,
 [data-touch="cashier"] > .till-body {
-  margin-right: 22.5rem;
+  margin-right: 0;
 }
 
 [data-touch="cashier"] .tshong-till-body,
@@ -1794,10 +1794,65 @@
 
 [data-touch="cashier"] .cash-stage {
   grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   align-items: stretch;
   background: transparent;
   gap: 0;
   padding: 0;
+}
+
+[data-touch="cashier"] .cash-board {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15.5rem, 1fr));
+}
+
+[data-touch="cashier"] .cash-thumb {
+  display: none;
+}
+
+[data-touch="cashier"] .cash-more {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  align-content: start;
+  gap: 0.45rem;
+  overflow: auto;
+  padding: 0.85rem;
+}
+
+[data-touch="cashier"] .cash-more form {
+  display: block;
+}
+
+[data-touch="cashier"] .cash-more button,
+[data-touch="cashier"] .cash-more a {
+  display: flex;
+  width: 100%;
+  min-height: 3rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.8rem;
+  background: #fff;
+  padding: 0.55rem 0.9rem;
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+[data-touch="cashier"] .cash-rail-close {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.55rem;
+  z-index: 1;
+  min-height: 2.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  background: #fff;
+  padding: 0 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 700;
 }
 
 [data-touch="cashier"] .tshong-till-keys {
@@ -2350,15 +2405,12 @@
 }
 
 [data-touch="cashier"] .cash-paper {
-  position: absolute;
+  position: relative;
   z-index: 2;
-  top: 0;
-  right: 0;
-  bottom: 0;
   display: flex;
   flex-direction: column;
-  width: 22.5rem;
-  height: auto;
+  width: auto;
+  height: 100%;
   min-height: 0;
   max-height: none;
   margin: 0;
@@ -2367,7 +2419,169 @@
   border-left: 1px solid #e4dccb;
   border-radius: 0;
   background: linear-gradient(180deg, #fffdf8 0%, #fff 40%);
-  box-shadow: -18px 0 48px rgb(28 36 32 / 12%);
+  box-shadow: none;
+}
+
+@media (min-width: 1024px) {
+  [data-touch="cashier"] .cash-stage {
+    grid-template-columns: minmax(0, 1fr) 22rem;
+  }
+
+  [data-touch="cashier"] .cash-pay-close {
+    display: none;
+  }
+}
+
+@media (max-width: 1023px) {
+  [data-touch="cashier"] .till-command {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto auto;
+    column-gap: 0.5rem;
+    padding: 0.5rem 0.6rem 0.55rem;
+  }
+
+  [data-touch="cashier"] .till-command .till-scan {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  [data-touch="cashier"] .till-command .till-status {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  [data-touch="cashier"] .till-command .till-info {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+
+  [data-touch="cashier"] .till-command .till-tools {
+    display: none;
+  }
+
+  [data-touch="cashier"] .till-command .till-due {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    min-width: 6.75rem;
+    padding: 0.55rem 0.7rem 0.45rem;
+  }
+
+  [data-touch="cashier"] .till-command .till-due p:nth-child(2) {
+    font-size: 1.35rem;
+  }
+
+  [data-touch="cashier"] .till-command .till-scan input,
+  [data-touch="cashier"] .till-command .till-scan > button[type="submit"],
+  [data-touch="cashier"] .till-command .till-scan > button[aria-label="Back office"] {
+    height: 2.75rem;
+    min-height: 2.75rem;
+  }
+
+  [data-touch="cashier"] .tshong-till-keys {
+    display: none;
+  }
+
+  [data-touch="cashier"] .cash-paper {
+    position: fixed;
+    inset: 0;
+    z-index: 32;
+    width: auto;
+    height: auto;
+    border-left: 0;
+  }
+
+  [data-touch="cashier"] .cash-stage[data-rail="idle"] .cash-paper {
+    display: none;
+  }
+
+  [data-touch="cashier"] .cash-pay-close {
+    display: inline-flex;
+  }
+
+  [data-touch="cashier"] .cash-sheet,
+  [data-touch="cashier"] .hold-sheet {
+    right: 0;
+    left: 0;
+    width: 100%;
+  }
+
+  [data-touch="cashier"] .cash-menu-list button {
+    min-height: 2.75rem;
+    padding-top: 0.65rem;
+    padding-bottom: 0.65rem;
+  }
+
+  [data-touch="cashier"] .cash-cash {
+    min-height: 3rem;
+  }
+
+  [data-touch="cashier"] .cash-thumb {
+    display: grid;
+    position: sticky;
+    bottom: 0;
+    z-index: 25;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.2rem;
+    border-top: 1px solid var(--line);
+    background: var(--paper);
+    padding: 0.3rem 0.35rem calc(0.3rem + env(safe-area-inset-bottom));
+  }
+
+  [data-touch="cashier"] .cash-thumb button {
+    display: flex;
+    min-height: 3rem;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 0.75rem;
+    background: transparent;
+    color: var(--ink);
+    font-size: 0.72rem;
+    font-weight: 700;
+  }
+
+  [data-touch="cashier"] .cash-thumb button[aria-pressed="true"] {
+    background: var(--pine);
+    color: #f7f4ee;
+  }
+
+  [data-touch="cashier"] .cash-thumb button:disabled {
+    opacity: 0.4;
+  }
+
+  [data-touch="cashier"] .cash-thumb button:focus-visible,
+  [data-touch="cashier"] .cash-more button:focus-visible,
+  [data-touch="cashier"] .cash-more a:focus-visible,
+  [data-touch="cashier"] .cash-rail-close:focus-visible {
+    outline: 2px solid var(--pine);
+    outline-offset: 2px;
+  }
+}
+
+@media (max-width: 767px) {
+  [data-touch="cashier"] .till-command {
+    grid-template-rows: auto;
+  }
+
+  [data-touch="cashier"] .till-command .till-info,
+  [data-touch="cashier"] .till-command .till-status {
+    display: none;
+  }
+
+  [data-touch="cashier"] .till-command .till-due {
+    grid-row: 1;
+  }
+
+  [data-touch="cashier"] .cash-board {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  [data-touch="cashier"] .cash-board {
+    grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  }
 }
 
 [data-touch="cashier"] .cash-paper .cash-receipt {
@@ -2398,9 +2612,14 @@
 }
 
 [data-touch="cashier"] .cash-receipt-head {
+  position: relative;
   display: grid;
   gap: 0.1rem;
   text-align: center;
+}
+
+[data-touch="cashier"] .cash-receipt-head:has(.cash-rail-close) {
+  padding-inline: 4.5rem;
 }
 
 [data-touch="cashier"] .cash-receipt-head strong {
@@ -3735,5 +3954,11 @@ html[data-surface="till"],
   [data-surface="till"] .till-slip-slot::before,
   [data-touch="cashier"] .cash-paper {
     transform: none;
+  }
+}
+
+@media (max-width: 1023px) {
+  [data-surface="till"][data-touch="cashier"] .tshong-till-keys {
+    display: none;
   }
 }

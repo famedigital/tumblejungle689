@@ -67,7 +67,8 @@ function bounce(path: string, error: unknown, code?: string): never {
   const params = new URLSearchParams();
   if (code) params.set("q", code);
   params.set("error", messageOf(error));
-  redirect(`${path}?${params.toString()}`);
+  const join = path.includes("?") ? "&" : "?";
+  redirect(`${path}${join}${params.toString()}`);
 }
 
 async function run(path: string, code: string | undefined, fn: () => Promise<void> | void) {
@@ -317,7 +318,7 @@ export async function settleAction(formData: FormData) {
 }
 
 export async function saveVenueAction(formData: FormData) {
-  await run("/admin", undefined, async () => {
+  await run("/admin?section=page", undefined, async () => {
     await requireArea("admin");
     await saveVenue({
       venueName: text(formData, "venueName"),
@@ -329,7 +330,7 @@ export async function saveVenueAction(formData: FormData) {
       playBlurb: text(formData, "playBlurb"),
       eatBlurb: text(formData, "eatBlurb"),
     });
-    redirect("/admin?ok=Venue%20page%20saved");
+    redirect("/admin?section=page&ok=Venue%20page%20saved");
   });
 }
 
@@ -397,7 +398,7 @@ export async function saveJournalScanAction(formData: FormData) {
 }
 
 export async function saveChargesAction(formData: FormData) {
-  await run("/admin", undefined, async () => {
+  await run("/admin?section=charges", undefined, async () => {
     await requireArea("admin");
     await saveCharges({
       scOn: text(formData, "scOn") === "1",
@@ -405,7 +406,7 @@ export async function saveChargesAction(formData: FormData) {
       gstOn: text(formData, "gstOn") === "1",
       gstPercent: Number(formData.get("gstPercent") ?? 0),
     });
-    redirect("/admin?ok=Service%20charge%20and%20GST%20saved");
+    redirect("/admin?section=charges&ok=Service%20charge%20and%20GST%20saved");
   });
 }
 
@@ -460,27 +461,27 @@ export async function updateMenuItemAction(formData: FormData) {
 }
 
 export async function addStaffAction(formData: FormData) {
-  await run("/admin", undefined, async () => {
+  await run("/admin?section=staff", undefined, async () => {
     await requireArea("admin");
     const role = text(formData, "role") as Role;
     if (!ROLES.includes(role)) throw new Error("Choose a role.");
     await addStaff(text(formData, "name"), role, text(formData, "secret"));
-    redirect("/admin?ok=Staff%20added");
+    redirect("/admin?section=staff&ok=Staff%20added");
   });
 }
 
 export async function setSecretAction(formData: FormData) {
-  await run("/admin", undefined, async () => {
+  await run("/admin?section=staff", undefined, async () => {
     await requireArea("admin");
     await setStaffSecret(Number(formData.get("id")), text(formData, "secret"));
-    redirect("/admin?ok=Sign-in%20updated");
+    redirect("/admin?section=staff&ok=Sign-in%20updated");
   });
 }
 
 export async function setActiveAction(formData: FormData) {
-  await run("/admin", undefined, async () => {
+  await run("/admin?section=staff", undefined, async () => {
     await requireArea("admin");
     await setStaffActive(Number(formData.get("id")), text(formData, "active") === "1");
-    redirect("/admin?ok=Staff%20updated");
+    redirect("/admin?section=staff&ok=Staff%20updated");
   });
 }

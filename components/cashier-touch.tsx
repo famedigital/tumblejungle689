@@ -37,6 +37,27 @@ import { lineKeyOf, localCode, visitKey, type TillOp } from "@/lib/till-op";
 import { useTillBook } from "@/lib/use-till-book";
 import type { MenuItem, Outlet, Rate, RecentTxn, Role, VisitView } from "@/lib/types";
 
+function subscribeTillLayout(onStoreChange: () => void) {
+  const phone = window.matchMedia("(max-width: 767px)");
+  const wide = window.matchMedia("(min-width: 1024px)");
+  phone.addEventListener("change", onStoreChange);
+  wide.addEventListener("change", onStoreChange);
+  return () => {
+    phone.removeEventListener("change", onStoreChange);
+    wide.removeEventListener("change", onStoreChange);
+  };
+}
+
+function readTillLayout() {
+  if (window.matchMedia("(max-width: 767px)").matches) return "phone" as const;
+  if (window.matchMedia("(max-width: 1023px)").matches) return "tablet" as const;
+  return "wide" as const;
+}
+
+function useTillLayout() {
+  return useSyncExternalStore(subscribeTillLayout, readTillLayout, () => "wide" as const);
+}
+
 type KotLine = { id: number; lineKey: string; name: string; qty: number; outlet: Outlet; note: string };
 type Ticket = { id: number; kind: "bot" | "kot"; tableNo: string; when: string; lines: KotLine[] };
 type VisitHit = {
@@ -223,6 +244,10 @@ export function CashierTouch({
   const [counterClear, setCounterClear] = useState(false);
   const [hits, setHits] = useState<VisitHit[]>([]);
   const [hitAt, setHitAt] = useState(0);
+  const [paySheet, setPaySheet] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const layout = useTillLayout();
+  const phone = layout === "phone";
   const hitsRef = useRef(hits);
   hitsRef.current = hits;
   const playRates = useMemo(() => [...rates].sort((a, b) => a.minutes - b.minutes), [rates]);
@@ -699,6 +724,9 @@ export function CashierTouch({
     setMenuOpen(false);
     setPeopleOpen(false);
     setRecentOpen(false);
+    setTimeUpOpen(false);
+    setMoreOpen(false);
+    setPaySheet(false);
     setAskTable(false);
     setTender(null);
     const minutes = rates.find((rate) => rate.minutes === 30)?.minutes ?? rates[0]?.minutes ?? 30;
@@ -778,6 +806,8 @@ export function CashierTouch({
     setPeopleOpen(false);
     setRecentOpen(false);
     setTimeUpOpen(false);
+    setMoreOpen(false);
+    setPaySheet(false);
     setCounterClear(false);
     book.setSelectedCode("");
     setTab("playing");
@@ -793,11 +823,24 @@ export function CashierTouch({
     setRecentOpen(false);
     setTimeUpOpen(false);
     setMenuOpen(false);
+    setMoreOpen(false);
+    setPaySheet(false);
     setHits([]);
     setScanText("");
     setTab("playing");
     setCounterClear(true);
     book.openBill("");
+  }
+
+  function showFloor() {
+    setCheck(null);
+    setMenuOpen(false);
+    setPeopleOpen(false);
+    setRecentOpen(false);
+    setTimeUpOpen(false);
+    setMoreOpen(false);
+    setPaySheet(false);
+    setTab("playing");
   }
 
   useEffect(() => {
@@ -1011,7 +1054,7 @@ export function CashierTouch({
         ) : null
       }
       onFind={openScanned}
-      inputMode="none"
+      inputMode={phone ? "text" : "none"}
       scanPlaceholder="Phone or ticket"
       lead={<BackOfficeButton role={role} />}
       dueEyebrow={visit ? (overtime ? "Extra time" : "Due") : "Playing"}
@@ -1155,7 +1198,7 @@ export function CashierTouch({
           </div>
         ) : null}
 
-        <div className="tshong-till-body cash-stage">
+        <div className="tshong-till-body cash-stage" data-rail={check || paySheet ? "open" : "idle"}>
           <div className="tshong-till-ticket cash-list">
             <Tabs value={tab} onValueChange={setTab} className="cash-tabs min-h-0 flex-1">
               <TabsList variant="line" className="h-9 w-fit max-w-full justify-start gap-0 overflow-x-auto px-1">
@@ -1177,7 +1220,7 @@ export function CashierTouch({
               </TabsList>
               <TabsContent value="playing" className="min-h-0 overflow-auto">
                 {ranked.length ? (
-                  <ul data-play-board="" className="grid list-none grid-cols-[repeat(auto-fill,15.5rem)] gap-3 p-3" aria-label="Open visits">
+                  <ul data-play-board="" className="cash-board list-none gap-3 p-3" aria-label="Open visits">
                     {ranked.map((row, index) => {
                       const on = openVisit ? row.item.id === openVisit.id : index === Math.min(boardAt, ranked.length - 1);
                       const time = row.left < 0 ? "over" : row.left <= 5 ? "ending" : "ok";
@@ -1330,6 +1373,7 @@ export function CashierTouch({
               fieldRef={checkField}
               formRef={checkForm}
               onChange={setCheck}
+              onClose={() => setCheck(null)}
               onWalkIn={beginWalkIn}
               onCheckIn={(draft) => {
                 if (!playRate) return;
@@ -1383,6 +1427,7 @@ export function CashierTouch({
               tableRef={tableRef}
               tableError={tableError}
               spots={tableSpots(open)}
+              onClose={() => setPaySheet(false)}
               onTable={(value) => {
                 setTableError("");
                 setTableNo(value);
@@ -1423,6 +1468,50 @@ export function CashierTouch({
           </div>
           </PrintPortal>
         ) : null}
+        <nav className="cash-thumb" aria-label="Till">
+          <button type="button" aria-pressed={tab === "playing" && !menuOpen && !check && !paySheet && !moreOpen} onClick={showFloor}>
+            Floor
+          </button>
+          <button
+            type="button"
+            aria-pressed={menuOpen}
+            onClick={() => {
+              setCheck(null);
+              setPaySheet(false);
+              setMoreOpen(false);
+              setPeopleOpen(false);
+              setRecentOpen(false);
+              setTimeUpOpen(false);
+              setMenuOpen(true);
+            }}
+          >
+            Order
+          </button>
+          <button type="button" aria-pressed={Boolean(check)} onClick={beginCheckIn}>
+            Check-in
+          </button>
+          <button
+            type="button"
+            disabled={!openVisit}
+            aria-pressed={paySheet}
+            onClick={() => {
+              if (!openVisit) return;
+              setCheck(null);
+              setMenuOpen(false);
+              setPeopleOpen(false);
+              setRecentOpen(false);
+              setTimeUpOpen(false);
+              setMoreOpen(false);
+              setPaySheet(true);
+              if (tab === "playing") setTab(openVisit.code);
+            }}
+          >
+            Pay
+          </button>
+          <button type="button" aria-pressed={moreOpen} onClick={() => setMoreOpen((open) => !open)}>
+            More
+          </button>
+        </nav>
         <footer className="tshong-till-keys">
           {openVisit
             ? rates.map((rate) => (
@@ -1521,6 +1610,74 @@ export function CashierTouch({
             <span>Menu</span>
           </button>
         </footer>
+        {moreOpen ? (
+          <div className="cash-scrim" role="presentation" onClick={() => setMoreOpen(false)}>
+            <div className="cash-sheet" role="dialog" aria-modal="true" aria-label="More" onClick={(event) => event.stopPropagation()}>
+              <div className="cash-sheet-bar">
+                <p>More</p>
+                <button type="button" onClick={() => setMoreOpen(false)}>
+                  Close
+                </button>
+              </div>
+              <div className="cash-more">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMoreOpen(false);
+                    setMenuOpen(false);
+                    setRecentOpen(false);
+                    setTimeUpOpen(false);
+                    setPeopleOpen(true);
+                  }}
+                >
+                  People
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMoreOpen(false);
+                    setMenuOpen(false);
+                    setPeopleOpen(false);
+                    setRecentOpen(false);
+                    setTimeUpOpen(true);
+                  }}
+                >
+                  Time&apos;s up
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMoreOpen(false);
+                    setRecentIndex(0);
+                    setRecentOpen(true);
+                  }}
+                >
+                  Recent
+                </button>
+                {openVisit ? (
+                  <Link href={`/stickers/${openVisit.code}`} onClick={() => setMoreOpen(false)}>
+                    Stickers
+                  </Link>
+                ) : null}
+                <button type="button" onClick={() => void book.chooseBackup()}>
+                  {book.backupOn ? "Backup on" : "Backup"}
+                </button>
+                <button type="button" onClick={() => void book.restoreBackup()}>
+                  Restore
+                </button>
+                <button type="button" onClick={() => setCam((value) => !value)}>
+                  {cam ? "Hide camera" : "Camera"}
+                </button>
+                <button type="button" onClick={() => window.open("/display", "tumble-customer", "width=1100,height=800")}>
+                  Screen
+                </button>
+                <form action={logoutAction}>
+                  <button type="submit">Lock</button>
+                </form>
+              </div>
+            </div>
+          </div>
+        ) : null}
         {peopleOpen ? (
           <HoldSheet
             visits={open}
@@ -2105,6 +2262,7 @@ function CheckInSheet({
   fieldRef,
   formRef,
   onChange,
+  onClose,
   onWalkIn,
   onCheckIn,
   onAdd,
@@ -2117,6 +2275,7 @@ function CheckInSheet({
   fieldRef: RefObject<HTMLInputElement | null>;
   formRef: RefObject<HTMLFormElement | null>;
   onChange: (next: CheckDraft) => void;
+  onClose: () => void;
   onWalkIn: () => void;
   onCheckIn: (draft: CheckDraft) => void;
   onAdd: (draft: CheckDraft) => void;
@@ -2154,6 +2313,9 @@ function CheckInSheet({
         }}
       >
         <header className="cash-receipt-head">
+          <button type="button" className="cash-rail-close" onClick={onClose}>
+            Close
+          </button>
           <strong>{venueName}</strong>
           <span>{adding ? "Add children" : draft.step === "kind" ? "New" : "Check in"}</span>
         </header>
@@ -2552,6 +2714,7 @@ function PayRail({
   tableError,
   spots,
   onTable,
+  onClose,
   onSale,
   onAddChild,
 }: {
@@ -2566,6 +2729,7 @@ function PayRail({
   tableError: string;
   spots: { name: string; full: boolean }[];
   onTable: (value: string) => void;
+  onClose?: () => void;
   onSale: () => void;
   onAddChild?: () => void;
 }) {
@@ -2577,6 +2741,11 @@ function PayRail({
     <aside className="tshong-till-rail cash-paper">
       <div className="cash-receipt">
         <header className="cash-receipt-head">
+          {onClose ? (
+            <button type="button" className="cash-rail-close cash-pay-close" onClick={onClose}>
+              Close
+            </button>
+          ) : null}
           <strong>{venueName}</strong>
           <span>{visit.code}</span>
         </header>

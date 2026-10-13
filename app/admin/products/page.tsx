@@ -17,7 +17,7 @@ export default async function ProductsPage({
   const categories = await listCategories();
 
   return (
-    <StaffShell role={session.role} name={session.name} title="Products" tone="candy" current="/admin/products">
+    <StaffShell role={session.role} name={session.name} title="Products" tone="candy" current="products">
       <Flash error={query.error} ok={query.ok} />
       <ProductHub
         rates={settings.rates}

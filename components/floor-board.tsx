@@ -69,9 +69,9 @@ export function FloorBoard({ pulse }: { pulse: FloorPulse }) {
         Live floor · refreshes every 12 seconds · {formatWhen(pulse.at)}
       </p>
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:grid sm:grid-cols-2 sm:overflow-visible sm:px-0 xl:grid-cols-4">
         {stats.map((stat) => (
-          <article key={stat.label} className={`rounded-3xl p-4 ${stat.wash}`}>
+          <article key={stat.label} className={`w-[11.5rem] shrink-0 rounded-3xl p-4 sm:w-auto ${stat.wash}`}>
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium">{stat.label}</p>
               <stat.icon className="size-5" aria-hidden />

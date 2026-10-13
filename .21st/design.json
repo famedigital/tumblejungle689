@@ -1,0 +1,397 @@
+{
+  "version": 1,
+  "project": {
+    "name": "tumble-jumble",
+    "productType": null,
+    "stack": [
+      "nextjs",
+      "react",
+      "shadcn",
+      "tailwind-v4"
+    ]
+  },
+  "sources": {
+    "tokens": [
+      "app/globals.css"
+    ],
+    "components": [
+      "components/ui"
+    ],
+    "assets": [
+      "public/brand"
+    ],
+    "instructions": [
+      "AGENTS.md",
+      "CLAUDE.md"
+    ]
+  },
+  "design": {
+    "colorMode": "light-and-dark",
+    "colors": {
+      "--color-background": {
+        "value": "var(--background)",
+        "source": "app/globals.css"
+      },
+      "--color-foreground": {
+        "value": "var(--foreground)",
+        "source": "app/globals.css"
+      },
+      "--color-sidebar-ring": {
+        "value": "var(--sidebar-ring)",
+        "source": "app/globals.css"
+      },
+      "--color-sidebar-border": {
+        "value": "var(--sidebar-border)",
+        "source": "app/globals.css"
+      },
+      "--color-sidebar-accent-foreground": {
+        "value": "var(--sidebar-accent-foreground)",
+        "source": "app/globals.css"
+      },
+      "--color-sidebar-accent": {
+        "value": "var(--sidebar-accent)",
+        "source": "app/globals.css"
+      },
+      "--color-sidebar-primary-foreground": {
+        "value": "var(--sidebar-primary-foreground)",
+        "source": "app/globals.css"
+      },
+      "--color-sidebar-primary": {
+        "value": "var(--sidebar-primary)",
+        "source": "app/globals.css"
+      },
+      "--color-sidebar-foreground": {
+        "value": "var(--sidebar-foreground)",
+        "source": "app/globals.css"
+      },
+      "--color-sidebar": {
+        "value": "var(--sidebar)",
+        "source": "app/globals.css"
+      },
+      "--color-chart-5": {
+        "value": "var(--chart-5)",
+        "source": "app/globals.css"
+      },
+      "--color-chart-4": {
+        "value": "var(--chart-4)",
+        "source": "app/globals.css"
+      },
+      "--color-chart-3": {
+        "value": "var(--chart-3)",
+        "source": "app/globals.css"
+      },
+      "--color-chart-2": {
+        "value": "var(--chart-2)",
+        "source": "app/globals.css"
+      },
+      "--color-chart-1": {
+        "value": "var(--chart-1)",
+        "source": "app/globals.css"
+      },
+      "--color-ring": {
+        "value": "var(--ring)",
+        "source": "app/globals.css"
+      },
+      "--color-input": {
+        "value": "var(--input)",
+        "source": "app/globals.css"
+      },
+      "--color-border": {
+        "value": "var(--border)",
+        "source": "app/globals.css"
+      },
+      "--color-destructive": {
+        "value": "var(--destructive)",
+        "source": "app/globals.css"
+      },
+      "--color-accent-foreground": {
+        "value": "var(--accent-foreground)",
+        "source": "app/globals.css"
+      },
+      "--color-accent": {
+        "value": "var(--accent)",
+        "source": "app/globals.css"
+      },
+      "--color-muted-foreground": {
+        "value": "var(--muted-foreground)",
+        "source": "app/globals.css"
+      },
+      "--color-muted": {
+        "value": "var(--muted)",
+        "source": "app/globals.css"
+      },
+      "--color-secondary-foreground": {
+        "value": "var(--secondary-foreground)",
+        "source": "app/globals.css"
+      },
+      "--color-secondary": {
+        "value": "var(--secondary)",
+        "source": "app/globals.css"
+      },
+      "--color-primary-foreground": {
+        "value": "var(--primary-foreground)",
+        "source": "app/globals.css"
+      },
+      "--color-primary": {
+        "value": "var(--primary)",
+        "source": "app/globals.css"
+      },
+      "--color-popover-foreground": {
+        "value": "var(--popover-foreground)",
+        "source": "app/globals.css"
+      },
+      "--color-popover": {
+        "value": "var(--popover)",
+        "source": "app/globals.css"
+      },
+      "--color-card-foreground": {
+        "value": "var(--card-foreground)",
+        "source": "app/globals.css"
+      },
+      "--color-card": {
+        "value": "var(--card)",
+        "source": "app/globals.css"
+      },
+      "--background": {
+        "value": "#f6f3ec",
+        "source": "app/globals.css"
+      },
+      "--foreground": {
+        "value": "#1c2420",
+        "source": "app/globals.css"
+      },
+      "--card-foreground": {
+        "value": "#1c2420",
+        "source": "app/globals.css"
+      },
+      "--popover-foreground": {
+        "value": "#1c2420",
+        "source": "app/globals.css"
+      },
+      "--primary": {
+        "value": "#146047",
+        "source": "app/globals.css"
+      },
+      "--primary-foreground": {
+        "value": "#f7f4ee",
+        "source": "app/globals.css"
+      },
+      "--secondary": {
+        "value": "#f3e2b0",
+        "source": "app/globals.css"
+      },
+      "--secondary-foreground": {
+        "value": "#3d2a00",
+        "source": "app/globals.css"
+      },
+      "--muted": {
+        "value": "#efeae2",
+        "source": "app/globals.css"
+      },
+      "--muted-foreground": {
+        "value": "#5c6b66",
+        "source": "app/globals.css"
+      },
+      "--accent": {
+        "value": "#e2a008",
+        "source": "app/globals.css"
+      },
+      "--accent-foreground": {
+        "value": "#3d2a00",
+        "source": "app/globals.css"
+      },
+      "--destructive": {
+        "value": "#b42318",
+        "source": "app/globals.css"
+      },
+      "--border": {
+        "value": "#ddd6c8",
+        "source": "app/globals.css"
+      },
+      "--ring": {
+        "value": "#146047",
+        "source": "app/globals.css"
+      },
+      "--chart-1": {
+        "value": "oklch(0.87 0 0)",
+        "source": "app/globals.css"
+      },
+      "--chart-2": {
+        "value": "oklch(0.556 0 0)",
+        "source": "app/globals.css"
+      },
+      "--chart-3": {
+        "value": "oklch(0.439 0 0)",
+        "source": "app/globals.css"
+      },
+      "--chart-4": {
+        "value": "oklch(0.371 0 0)",
+        "source": "app/globals.css"
+      },
+      "--chart-5": {
+        "value": "oklch(0.269 0 0)",
+        "source": "app/globals.css"
+      },
+      "--sidebar-foreground": {
+        "value": "oklch(0.985 0 0)",
+        "source": "app/globals.css"
+      },
+      "--sidebar-primary": {
+        "value": "oklch(0.488 0.243 264.376)",
+        "source": "app/globals.css"
+      },
+      "--sidebar-primary-foreground": {
+        "value": "oklch(0.985 0 0)",
+        "source": "app/globals.css"
+      },
+      "--sidebar-accent": {
+        "value": "oklch(0.269 0 0)",
+        "source": "app/globals.css"
+      },
+      "--sidebar-accent-foreground": {
+        "value": "oklch(0.985 0 0)",
+        "source": "app/globals.css"
+      },
+      "--sidebar-border": {
+        "value": "oklch(1 0 0 / 10%)",
+        "source": "app/globals.css"
+      },
+      "--sidebar-ring": {
+        "value": "oklch(0.556 0 0)",
+        "source": "app/globals.css"
+      }
+    },
+    "typography": {
+      "--font-sans": {
+        "value": "var(--font-sans)",
+        "source": "app/globals.css"
+      },
+      "--font-mono": {
+        "value": "var(--font-geist-mono)",
+        "source": "app/globals.css"
+      },
+      "--font-heading": {
+        "value": "var(--font-heading)",
+        "source": "app/globals.css"
+      }
+    },
+    "spacing": {},
+    "radius": {
+      "--radius-sm": {
+        "value": "calc(var(--radius) * 0.6)",
+        "source": "app/globals.css"
+      },
+      "--radius-md": {
+        "value": "calc(var(--radius) * 0.8)",
+        "source": "app/globals.css"
+      },
+      "--radius-lg": {
+        "value": "var(--radius)",
+        "source": "app/globals.css"
+      },
+      "--radius-xl": {
+        "value": "calc(var(--radius) * 1.4)",
+        "source": "app/globals.css"
+      },
+      "--radius-2xl": {
+        "value": "calc(var(--radius) * 1.8)",
+        "source": "app/globals.css"
+      },
+      "--radius-3xl": {
+        "value": "calc(var(--radius) * 2.2)",
+        "source": "app/globals.css"
+      },
+      "--radius-4xl": {
+        "value": "calc(var(--radius) * 2.6)",
+        "source": "app/globals.css"
+      },
+      "--radius": {
+        "value": "1rem",
+        "source": "app/globals.css"
+      }
+    },
+    "shadows": {},
+    "motion": {},
+    "density": "unknown"
+  },
+  "components": {
+    "installed": [
+      "badge",
+      "button",
+      "card",
+      "dialog",
+      "field",
+      "input",
+      "label",
+      "select",
+      "separator",
+      "sonner",
+      "switch",
+      "table",
+      "tabs",
+      "textarea"
+    ],
+    "preferredPrimitives": [],
+    "patterns": []
+  },
+  "constraints": {
+    "must": [],
+    "avoid": []
+  },
+  "decisions": [
+    {
+      "id": "playtab-mark",
+      "choice": "Tumble Jungle stays the shop name. PlayTab is the software: the avatar is the logo, favicon, and app icon, with the line Powered by PlayTab by GoKora, Innovates.bt.",
+      "at": "2026-10-14"
+    },
+    {
+      "id": "cashier-command-bar",
+      "choice": "The cashier header is a command bar: joined lookup, metric tiles for the floor, a pine due plaque with a saffron edge, and grouped actions. Sale and desk tills keep the earlier strip.",
+      "at": "2026-10-14"
+    },
+    {
+      "id": "touch-counter-admin",
+      "choice": "Under 1024px the till is one column with a thumb bar and full-height sheets. At 1024px and up the task panel sits in flow beside the floor. Admin uses a left nav on wide screens and Floor, Products, and More on small screens.",
+      "at": "2026-10-14"
+    }
+  ],
+  "evidence": [
+    {
+      "fact": "components.installed",
+      "source": "components/ui"
+    },
+    {
+      "fact": "design.colorMode:light-and-dark",
+      "source": "app/globals.css"
+    },
+    {
+      "fact": "design.tokens",
+      "source": "app/globals.css"
+    },
+    {
+      "fact": "project.instructions",
+      "source": "AGENTS.md"
+    },
+    {
+      "fact": "project.instructions",
+      "source": "CLAUDE.md"
+    },
+    {
+      "fact": "project.stack:nextjs",
+      "source": "package.json"
+    },
+    {
+      "fact": "project.stack:react",
+      "source": "package.json"
+    },
+    {
+      "fact": "project.stack:shadcn",
+      "source": "components.json"
+    },
+    {
+      "fact": "project.stack:tailwind-v4",
+      "source": "package.json"
+    }
+  ],
+  "generatedAt": "2026-10-13T21:50:33.128Z"
+}

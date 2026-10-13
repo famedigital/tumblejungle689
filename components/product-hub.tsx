@@ -84,15 +84,20 @@ export function ProductHub({
 
   return (
     <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
-      <section className="overflow-hidden rounded-3xl bg-card ring-1 ring-foreground/10">
+      <section className={`overflow-hidden rounded-3xl bg-card ring-1 ring-foreground/10 ${open ? "max-lg:hidden" : ""}`}>
         <div className="space-y-3 border-b p-4">
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Find a play time or dish"
-            className="h-11 w-full rounded-xl border bg-background px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-            aria-label="Find a product"
-          />
+          <div className="flex gap-2">
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Find a play time or dish"
+              className="h-11 w-full rounded-xl border bg-background px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+              aria-label="Find a product"
+            />
+            <Button type="button" className="h-11 shrink-0 lg:hidden" onClick={() => setOpen("new")}>
+              Add
+            </Button>
+          </div>
           <div className="flex flex-wrap gap-2" role="tablist" aria-label="Product kind">
             {(
               [
@@ -149,22 +154,29 @@ export function ProductHub({
         </ul>
       </section>
 
-      <aside className="space-y-4 lg:sticky lg:top-24">
+      <aside className={`space-y-4 lg:sticky lg:top-24 ${open ? "max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:bottom-16 max-lg:z-30 max-lg:overflow-auto max-lg:bg-background max-lg:p-4" : "max-lg:hidden"}`}>
+        {open ? (
+          <Button type="button" variant="outline" className="h-11 lg:hidden" onClick={() => setOpen("")}>
+            Back to products
+          </Button>
+        ) : null}
         {open === "extra" ? (
           <ExtraDesk key={extraPerMinNu} rates={rates} extraPerMinNu={extraPerMinNu} />
         ) : rateIndex >= 0 ? (
           <RateDesk key={rates[rateIndex].minutes} rates={rates} index={rateIndex} sold={soldPlay[rates[rateIndex].minutes] ?? 0} />
         ) : item ? (
           <ItemDesk key={item.id} item={item} categories={categories} sold={soldDishes[item.id] ?? 0} />
-        ) : (
+        ) : open === "new" ? null : (
           <section className="space-y-2 rounded-3xl bg-card p-5 ring-1 ring-foreground/10">
             <h2 className="font-heading text-2xl">New product</h2>
             <p className="text-sm text-muted-foreground">Pick a row to edit it, or add a play time, dish, or category.</p>
           </section>
         )}
-        <NewPlay rates={rates} />
-        <NewItem categories={categories} />
-        <NewCategory />
+        <div className={`space-y-4 ${open && open !== "new" ? "max-lg:hidden" : ""}`}>
+          <NewPlay rates={rates} />
+          <NewItem categories={categories} />
+          <NewCategory />
+        </div>
       </aside>
     </div>
   );

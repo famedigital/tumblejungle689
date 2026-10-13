@@ -14,7 +14,7 @@ export default async function ReceiptDesignPage({
   const settings = await getSettings();
 
   return (
-    <StaffShell role={session.role} name={session.name} title="Receipt" tone="candy" current="/admin/receipt">
+    <StaffShell role={session.role} name={session.name} title="Receipt" tone="candy" current="receipt">
       <Flash error={query.error} ok={query.ok} />
       <ReceiptEditor
         venue={settings.venueName}

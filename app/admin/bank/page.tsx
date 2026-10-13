@@ -14,7 +14,7 @@ export default async function BankPage({
   const settings = await getSettings();
 
   return (
-    <StaffShell role={session.role} name={session.name} title="Bank" tone="candy" current="/admin/bank">
+    <StaffShell role={session.role} name={session.name} title="Bank" tone="candy" current="bank">
       <Flash error={query.error} ok={query.ok} />
       <BankQrForm
         payload={settings.bankPayload}
