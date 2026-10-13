@@ -25,15 +25,15 @@ const PLATES = [
   },
 ];
 
-export default function EatPage() {
-  const settings = getSettings();
-  const menu = listMenu();
+export default async function EatPage() {
+  const settings = await getSettings();
+  const menu = await listMenu();
   return (
     <main className="mx-auto max-w-6xl space-y-8 px-4 py-10">
       <div className="grid items-center gap-8 lg:grid-cols-[0.9fr_1.1fr]">
         <div className="space-y-3">
           <p className="text-sm font-medium tracking-[0.16em] text-[#c2410c] uppercase">Hungry already?</p>
-          <h1 className="font-heading text-5xl text-[#146047]">Cafe and restaurant</h1>
+          <h1 className="font-heading text-4xl text-[#146047] sm:text-5xl">Cafe and restaurant</h1>
           <p className="max-w-xl text-lg leading-relaxed text-[#1f4d3a]">{settings.eatBlurb}</p>
           {settings.menuIsSample ? (
             <p className="rounded-2xl bg-[#ffe1dc] px-4 py-3 text-sm text-[#7f1d1d]">
@@ -42,13 +42,13 @@ export default function EatPage() {
           ) : null}
         </div>
         <div className="grid grid-cols-2 gap-3">
-          {PLATES.map((plate, index) => (
+          {PLATES.map((plate) => (
             <PhotoFrame
               key={plate.src}
               src={plate.src}
               alt={plate.alt}
               label={plate.label}
-              className={`aspect-[4/5] rounded-[1.5rem] shadow-md ring-4 ring-white ${index % 2 === 1 ? "mt-6" : ""}`}
+              className="aspect-[4/5] rounded-[1.5rem] shadow-md ring-4 ring-white"
             />
           ))}
         </div>

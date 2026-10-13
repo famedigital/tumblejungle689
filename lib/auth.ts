@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { db, sessionKey, verifySecret } from "@/lib/db";
+import { query, sessionKey, verifySecret } from "@/lib/db";
 import { can, homeFor, type Area, type Role } from "@/lib/types";
 
 export type Session = {
@@ -13,17 +13,18 @@ export type Session = {
 
 const COOKIE = "tj_session";
 
-function sign(payload: string): string {
-  const mac = createHmac("sha256", sessionKey()).update(payload).digest("base64url");
+function sign(payload: string, key: string): string {
+  const mac = createHmac("sha256", key).update(payload).digest("base64url");
   return `${payload}.${mac}`;
 }
 
-function readToken(token: string): Session | null {
+async function readToken(token: string): Promise<Session | null> {
   const split = token.lastIndexOf(".");
   if (split <= 0) return null;
   const payload = token.slice(0, split);
   const mac = token.slice(split + 1);
-  const expected = createHmac("sha256", sessionKey()).update(payload).digest("base64url");
+  const key = await sessionKey();
+  const expected = createHmac("sha256", key).update(payload).digest("base64url");
   const a = Buffer.from(mac);
   const b = Buffer.from(expected);
   if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
@@ -48,9 +49,10 @@ export async function setSession(session: Omit<Session, "exp">) {
   const full: Session = { ...session, exp: Date.now() + 14 * 60 * 60 * 1000 };
   const payload = Buffer.from(JSON.stringify(full)).toString("base64url");
   const jar = await cookies();
-  jar.set(COOKIE, sign(payload), {
+  jar.set(COOKIE, sign(payload, await sessionKey()), {
     httpOnly: true,
     sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
     path: "/",
     maxAge: 14 * 60 * 60,
   });
@@ -61,14 +63,14 @@ export async function clearSession() {
   jar.delete(COOKIE);
 }
 
-export function findStaffBySecret(secret: string): {
+export async function findStaffBySecret(secret: string): Promise<{
   id: number;
   name: string;
   role: Role;
-} | null {
-  const rows = db()
-    .prepare("SELECT id, name, role, secret_hash FROM staff WHERE active = 1")
-    .all() as { id: number; name: string; role: Role; secret_hash: string }[];
+} | null> {
+  const rows = await query().many<{ id: number; name: string; role: Role; secret_hash: string }>(
+    "SELECT id, name, role, secret_hash FROM staff WHERE active = 1",
+  );
   for (const row of rows) {
     if (verifySecret(secret.trim(), row.secret_hash)) {
       return { id: row.id, name: row.name, role: row.role };

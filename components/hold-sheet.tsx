@@ -1,11 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { cancelHoldAction } from "@/app/actions";
+import { cancelHoldAction, leaveHoldAction, releaseHoldAction } from "@/app/actions";
+import { KotSlip } from "@/components/kot-slip";
 import { MiniRing, playSpanMinutes } from "@/components/live-timer";
-import { formatNu, formatPhone, minutesLeft } from "@/lib/format";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Field } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { formatNu, formatPhone, formatWhen, minutesLeft } from "@/lib/format";
 import type { VisitView } from "@/lib/types";
+import { canFloorDrop, canLeaveOnTime, isPlayVisit, playIsOvertime } from "@/lib/visit-rules";
 
 type Filter = "all" | "ending" | "over";
 
@@ -14,42 +20,57 @@ export function HoldSheet({
   now,
   currentId,
   onClose,
+  desk = "/cashier",
+  venue = "Tumble Jumble",
 }: {
   visits: VisitView[];
   now: number;
   currentId?: number;
   onClose: () => void;
+  desk?: string;
+  venue?: string;
 }) {
   const [find, setFind] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [gate, setGate] = useState<{ id: number; mode: "over" | "void" } | null>(null);
   const needle = find.trim().toLowerCase().replace(/\s/g, "");
 
   const rows = useMemo(() => {
     return visits
       .map((visit) => ({ visit, left: minutesLeft(visit.paidUntil, now) }))
       .filter(({ visit, left }) => {
-        if (filter === "over" && left >= 0) return false;
-        if (filter === "ending" && (left < 0 || left > 5)) return false;
+        const playing = isPlayVisit(visit);
+        if (filter === "over" && (!playing || left >= 0)) return false;
+        if (filter === "ending" && (!playing || left < 0 || left > 5)) return false;
         if (!needle) return true;
         const hay = `${visit.phone} ${visit.code} ${visit.guardianName}`.toLowerCase().replace(/\s/g, "");
         return hay.includes(needle);
       })
-      .sort((a, b) => a.left - b.left);
+      .sort((a, b) => {
+        const ap = isPlayVisit(a.visit) ? a.left : Number.POSITIVE_INFINITY;
+        const bp = isPlayVisit(b.visit) ? b.left : Number.POSITIVE_INFINITY;
+        return ap - bp;
+      });
   }, [visits, now, filter, needle]);
 
-  const overdue = visits.filter((visit) => minutesLeft(visit.paidUntil, now) < 0).length;
+  const overdue = visits.filter((visit) => isPlayVisit(visit) && minutesLeft(visit.paidUntil, now) < 0).length;
   const ending = visits.filter((visit) => {
     const left = minutesLeft(visit.paidUntil, now);
-    return left >= 0 && left <= 5;
+    return isPlayVisit(visit) && left >= 0 && left <= 5;
   }).length;
   const selected = rows.find((row) => row.visit.id === selectedId) ?? rows[0] ?? null;
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
+      if (gate && event.key !== "Escape") return;
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
+        if (gate) {
+          setGate(null);
+          return;
+        }
         onClose();
         return;
       }
@@ -63,16 +84,25 @@ export function HoldSheet({
         setSelectedId(rows[Math.max(0, index - 1)].visit.id);
       } else if (event.key === "Delete" && selected) {
         event.preventDefault();
+        const over = playIsOvertime(selected.visit, now);
+        if (over) {
+          setGate({ id: selected.visit.id, mode: "over" });
+          return;
+        }
+        if (!canLeaveOnTime(selected.visit, now) && !canFloorDrop(selected.visit, now)) {
+          setGate({ id: selected.visit.id, mode: "void" });
+          return;
+        }
         const form = document.querySelector(`form[data-hold-id="${selected.visit.id}"]`);
         if (form instanceof HTMLFormElement) form.requestSubmit();
       } else if (event.key === "Enter" && selected && !(event.target instanceof HTMLButtonElement)) {
         event.preventDefault();
-        window.location.href = `/cashier?q=${selected.visit.code}`;
+        window.location.href = `${desk}?q=${selected.visit.code}`;
       }
     }
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [rows, selected, onClose]);
+  }, [rows, selected, onClose, desk, gate, now]);
 
   useEffect(() => {
     const node = document.querySelector(".hold-row[data-pick='1']");
@@ -112,7 +142,10 @@ export function HoldSheet({
           <p className="cash-hint">{visits.length === 0 ? "No one is on hold." : "No one matches."}</p>
         ) : (
           <ul className="hold-list">
-            {rows.map(({ visit }) => (
+            {rows.map(({ visit, left }) => {
+              const playing = isPlayVisit(visit);
+              const over = playing && left < 0;
+              return (
               <li
                 key={visit.id}
                 className="hold-row"
@@ -120,30 +153,163 @@ export function HoldSheet({
                 data-pick={selected?.visit.id === visit.id ? "1" : "0"}
                 onMouseEnter={() => setSelectedId(visit.id)}
               >
-                <Link href={`/cashier?q=${visit.code}`} aria-current={visit.id === currentId ? "page" : undefined}>
-                  <MiniRing end={visit.paidUntil} spanMin={playSpanMinutes(visit.blocks)} />
+                <Link href={`${desk}?q=${visit.code}`} aria-current={visit.id === currentId ? "page" : undefined}>
+                  {playing ? <MiniRing end={visit.paidUntil} spanMin={playSpanMinutes(visit.blocks)} /> : <span className="text-xs text-muted-foreground">Bill</span>}
                   <span>
-                    <strong>{formatPhone(visit.phone)}</strong>
+                    <strong>{playing ? formatPhone(visit.phone) : "Walk-in"}</strong>
                     <small>
-                      {visit.guardianName ? `${visit.guardianName} · ` : ""}
-                      {visit.childCount} {visit.childCount === 1 ? "child" : "children"} · {visit.code}
+                      {playing
+                        ? `${visit.childCount} ${visit.childCount === 1 ? "child" : "children"} · ${visit.code}`
+                        : `${visit.lines.reduce((sum, line) => sum + line.qty, 0)} items · ${visit.code}`}
                     </small>
                   </span>
                 </Link>
                 {visit.dueNu > 0 ? <b>{formatNu(visit.dueNu)}</b> : <b className="hold-clear">Paid</b>}
-                <form action={cancelHoldAction} data-hold-id={visit.id}>
-                  <input type="hidden" name="visitId" value={visit.id} />
-                  <input type="hidden" name="code" value={visit.code} />
-                  <input type="hidden" name="back" value="/cashier" />
-                  <button type="submit" className="hold-remove">
+                {over ? (
+                  <Button type="button" size="xs" variant="outline" onClick={() => setGate({ id: visit.id, mode: "over" })}>
                     Delete
-                  </button>
-                </form>
+                  </Button>
+                ) : canLeaveOnTime(visit, now) ? (
+                  <form action={leaveHoldAction} data-hold-id={visit.id}>
+                    <input type="hidden" name="visitId" value={visit.id} />
+                    <input type="hidden" name="code" value={visit.code} />
+                    <input type="hidden" name="back" value={desk} />
+                    <Button type="submit" size="xs" variant="outline">
+                      Left
+                    </Button>
+                  </form>
+                ) : canFloorDrop(visit, now) ? (
+                  <form action={cancelHoldAction} data-hold-id={visit.id}>
+                    <input type="hidden" name="visitId" value={visit.id} />
+                    <input type="hidden" name="code" value={visit.code} />
+                    <input type="hidden" name="back" value={desk} />
+                    <Button type="submit" size="xs" variant="outline">
+                      Remove
+                    </Button>
+                  </form>
+                ) : (
+                  <Button type="button" size="xs" variant="outline" onClick={() => setGate({ id: visit.id, mode: "void" })}>
+                    Void
+                  </Button>
+                )}
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </div>
+      <OvertimeGate
+        visit={visits.find((visit) => visit.id === gate?.id) ?? null}
+        mode={gate?.mode ?? "over"}
+        desk={desk}
+        venue={venue}
+        onClose={() => setGate(null)}
+      />
     </div>
+  );
+}
+
+function OvertimeGate({
+  visit,
+  mode,
+  desk,
+  venue,
+  onClose,
+}: {
+  visit: VisitView | null;
+  mode: "over" | "void";
+  desk: string;
+  venue: string;
+  onClose: () => void;
+}) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const [armed, setArmed] = useState(false);
+  const fired = visit?.lines.filter((line) => !line.paid && line.firedQty > 0) ?? [];
+
+  useEffect(() => {
+    if (!armed) return;
+    document.body.dataset.print = "kot";
+    const done = () => {
+      delete document.body.dataset.print;
+      window.removeEventListener("afterprint", done);
+      const button = formRef.current?.querySelector('button[value="delete"]');
+      if (button instanceof HTMLButtonElement) formRef.current?.requestSubmit(button);
+    };
+    window.addEventListener("afterprint", done);
+    window.print();
+    return () => window.removeEventListener("afterprint", done);
+  }, [armed]);
+
+  return (
+    <Dialog open={visit != null} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{mode === "over" ? "Play is overtime" : "Manager void"}</DialogTitle>
+          <DialogDescription>
+            {mode === "over"
+              ? "Take payment for the extra time, or a manager can make the overtime free or void the visit."
+              : "Take payment, or a manager can void this bill. Food already sent prints a cancel first."}
+          </DialogDescription>
+        </DialogHeader>
+        {visit ? (
+          <div className="grid gap-3">
+            <Button asChild>
+              <Link href={`${desk}?q=${visit.code}`} onClick={onClose}>
+                Take payment
+              </Link>
+            </Button>
+            <form
+              ref={formRef}
+              action={releaseHoldAction}
+              className="grid gap-3"
+              onSubmit={(event) => {
+                const submitter = event.nativeEvent instanceof SubmitEvent ? event.nativeEvent.submitter : null;
+                const choice = submitter instanceof HTMLButtonElement ? submitter.value : "";
+                const pin = String(new FormData(event.currentTarget).get("secret") ?? "").trim();
+                if (choice === "delete" && fired.length > 0 && !armed && pin) {
+                  event.preventDefault();
+                  setArmed(true);
+                }
+              }}
+            >
+              <input type="hidden" name="visitId" value={visit.id} />
+              <input type="hidden" name="code" value={visit.code} />
+              <input type="hidden" name="back" value={desk} />
+              <Field label="Manager PIN">
+                <Input name="secret" type="password" inputMode="numeric" autoComplete="off" autoFocus />
+              </Field>
+              <div className="flex gap-2">
+                {mode === "over" ? (
+                  <Button type="submit" name="choice" value="waive" variant="outline" className="flex-1">
+                    Free of charge
+                  </Button>
+                ) : null}
+                <Button type="submit" name="choice" value="delete" variant="destructive" className="flex-1">
+                  Void
+                </Button>
+              </div>
+            </form>
+            {armed && fired.length > 0 ? (
+              <KotSlip
+                venue={venue}
+                tableNo={visit.tableNo || "Counter"}
+                phone={visit.phone}
+                code={visit.code}
+                qr=""
+                when={formatWhen(new Date().toISOString())}
+                reprint={false}
+                cancel
+                lines={fired.map((line) => ({
+                  name: line.name,
+                  qty: line.firedQty,
+                  outlet: line.outlet,
+                  note: "Cancel",
+                }))}
+              />
+            ) : null}
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
   );
 }

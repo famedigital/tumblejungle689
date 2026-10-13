@@ -13,7 +13,7 @@ export default async function LoginPage({
 }) {
   await redirectHome();
   const { error } = await searchParams;
-  const settings = getSettings();
+  const settings = await getSettings();
   return (
     <main className="mx-auto flex min-h-full w-full max-w-md flex-col justify-center gap-6 px-4 py-16">
       <div>
@@ -31,19 +31,6 @@ export default async function LoginPage({
           Sign in
         </Button>
       </form>
-      {settings.showCredentialHint ? (
-        <div className="space-y-1 text-sm text-muted-foreground">
-          <p>First sign-in on this computer:</p>
-          <ul className="list-disc space-y-1 pl-5">
-            <li>Admin password: tumble-local</li>
-            <li>Front desk PIN: 1111</li>
-            <li>Cafe PIN: 2222</li>
-            <li>Restaurant PIN: 3333</li>
-            <li>Cashier PIN: 4444</li>
-          </ul>
-          <p>Change these in Admin. The list hides after the first change.</p>
-        </div>
-      ) : null}
     </main>
   );
 }

@@ -32,7 +32,7 @@ export function MenuBoard({ items }: { items: MenuItem[] }) {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap gap-2" role="tablist" aria-label="Where to eat">
+      <div className="grid grid-cols-3 gap-2" role="tablist" aria-label="Where to eat">
         {(
           [
             ["all", "Everything"],
@@ -46,7 +46,7 @@ export function MenuBoard({ items }: { items: MenuItem[] }) {
             role="tab"
             aria-selected={outlet === value}
             onClick={() => chooseOutlet(value)}
-            className={`h-11 rounded-full px-4 text-sm font-medium transition ${
+            className={`inline-flex h-11 items-center justify-center rounded-full px-2 text-center text-xs font-medium whitespace-nowrap sm:text-sm ${
               outlet === value ? "bg-[#1f7a5a] text-white" : "bg-white text-[#1f4d3a] ring-1 ring-[#1f4d3a]/15 hover:bg-[#e7f7f1]"
             }`}
           >
@@ -60,7 +60,7 @@ export function MenuBoard({ items }: { items: MenuItem[] }) {
             key={name}
             type="button"
             onClick={() => setCategory(name)}
-            className={`rounded-full px-3 py-1.5 text-sm transition ${
+            className={`inline-flex h-11 items-center justify-center rounded-full px-3 text-sm transition ${
               category === name ? "bg-[#ffb703] text-[#3d2a00]" : "bg-white ring-1 ring-foreground/10 hover:bg-[#fff6dd]"
             }`}
           >

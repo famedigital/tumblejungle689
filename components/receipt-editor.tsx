@@ -74,6 +74,7 @@ export function ReceiptEditor({
           total={430}
           cash={150}
           bank={280}
+          banks={[{ name: "MBOB", ref: "126-88412031", amount: 280 }]}
           thanks={draftThanks}
           rules={ruleLines}
         />

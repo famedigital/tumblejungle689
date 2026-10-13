@@ -10,6 +10,7 @@ export function Receipt({
   total,
   cash,
   bank,
+  banks = [],
   note = "",
   thanks = "Thank you",
   rules = [],
@@ -23,22 +24,47 @@ export function Receipt({
   total: number;
   cash: number;
   bank: number;
+  banks?: { name: string; ref: string; amount: number }[];
   note?: string;
   thanks?: string;
   rules?: string[];
 }) {
+  const bankRows = banks.length > 0 ? banks : bank > 0 ? [{ name: "Bank QR", ref: "", amount: bank }] : [];
+  const paid = [
+    cash > 0 ? { label: "Cash", amount: cash, ref: "" } : null,
+    ...bankRows.map((row) => ({ label: row.name, amount: row.amount, ref: row.ref })),
+  ].filter((row) => row !== null);
+
   return (
     <article className="print-receipt">
-      <p className="receipt-venue">{venue}</p>
-      {address ? <p className="receipt-muted">{address}</p> : null}
-      {note ? <p className="receipt-muted">{note}</p> : null}
-      <p className="receipt-rule" />
-      <p className="receipt-row">
-        <span>{when}</span>
-        <span>{code}</span>
+      <header className="receipt-head">
+        <p className="receipt-kicker">Bill</p>
+        <h1 className="receipt-venue">{venue}</h1>
+        {address ? <p className="receipt-address">{address}</p> : null}
+        {note ? <p className="receipt-address">{note}</p> : null}
+      </header>
+      <section className="receipt-meta">
+        <p className="receipt-row">
+          <span>When</span>
+          <span>{when}</span>
+        </p>
+        {code ? (
+          <p className="receipt-row">
+            <span>Ticket</span>
+            <span className="receipt-code">{code}</span>
+          </p>
+        ) : null}
+        {phone ? (
+          <p className="receipt-row">
+            <span>Phone</span>
+            <span>{phone}</span>
+          </p>
+        ) : null}
+      </section>
+      <p className="receipt-cols">
+        <span>Item</span>
+        <span>Amount</span>
       </p>
-      {phone ? <p className="receipt-muted">{phone}</p> : null}
-      <p className="receipt-rule" />
       <ul>
         {lines.map((line, index) => (
           <li key={`${line.name}-${index}`} className="receipt-row">
@@ -46,34 +72,38 @@ export function Receipt({
               {line.qty > 1 ? `${line.qty} × ` : ""}
               {line.name}
             </span>
-            <span>{formatNu(line.amount)}</span>
+            <span className="receipt-amt">{formatNu(line.amount)}</span>
           </li>
         ))}
       </ul>
-      <p className="receipt-rule" />
-      <p className="receipt-row receipt-total">
-        <span>Total</span>
-        <span>{formatNu(total)}</span>
-      </p>
-      {cash > 0 ? (
-        <p className="receipt-row">
-          <span>Cash</span>
-          <span>{formatNu(cash)}</span>
+      <section className="receipt-sum">
+        <p className="receipt-row receipt-total">
+          <span>Total</span>
+          <span className="receipt-amt">{formatNu(total)}</span>
         </p>
-      ) : null}
-      {bank > 0 ? (
-        <p className="receipt-row">
-          <span>Bank QR</span>
-          <span>{formatNu(bank)}</span>
-        </p>
-      ) : null}
-      <p className="receipt-rule" />
-      <p className="receipt-thanks">{thanks || "Thank you"}</p>
-      {rules.filter(Boolean).map((rule, index) => (
-        <p key={`${index}-${rule}`} className="receipt-rule-line">
-          {rule}
-        </p>
-      ))}
+        {paid.map((row, index) => (
+          <div key={`${row.label}-${row.ref}-${index}`}>
+            <p className="receipt-row receipt-pay">
+              <span>{row.label}</span>
+              <span className="receipt-amt">{formatNu(row.amount)}</span>
+            </p>
+            {row.ref ? (
+              <p className="receipt-row receipt-jr">
+                <span>Jr no</span>
+                <span className="receipt-code">{row.ref}</span>
+              </p>
+            ) : null}
+          </div>
+        ))}
+      </section>
+      <footer className="receipt-foot">
+        <p className="receipt-thanks">{thanks || "Thank you"}</p>
+        {rules.filter(Boolean).map((rule, index) => (
+          <p key={`${index}-${rule}`} className="receipt-rule-line">
+            {rule}
+          </p>
+        ))}
+      </footer>
     </article>
   );
 }

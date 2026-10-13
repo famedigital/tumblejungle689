@@ -9,11 +9,15 @@ export function PayQr({
   amountNu,
   note,
   compact = false,
+  strong = false,
+  showAmount = true,
 }: {
   staticPayload: string;
   amountNu: number;
   note: string;
   compact?: boolean;
+  strong?: boolean;
+  showAmount?: boolean;
 }) {
   const [src, setSrc] = useState("");
   const payload = buildDynamicEmv(staticPayload, amountNu, note);
@@ -27,10 +31,10 @@ export function PayQr({
     void import("qrcode")
       .then((mod) =>
         mod.toDataURL(payload, {
-          margin: 1,
-          width: 280,
+          margin: strong ? 2 : 1,
+          width: strong ? 520 : 280,
           errorCorrectionLevel: "M",
-          color: { dark: "#1f4d3a", light: "#ffffff" },
+          color: { dark: strong ? "#0a0a0a" : "#1f4d3a", light: "#ffffff" },
         }),
       )
       .then((url) => {
@@ -42,7 +46,7 @@ export function PayQr({
     return () => {
       gone = true;
     };
-  }, [payload]);
+  }, [payload, strong]);
 
   if (!staticPayload) {
     return (
@@ -57,11 +61,11 @@ export function PayQr({
     <div className="flex flex-col items-center gap-2">
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={src} alt={`Bank QR for ${formatNu(amountNu)}`} className={`${compact ? "size-36" : "size-52"} rounded-lg bg-white p-2`} />
+        <img src={src} alt={`Bank QR for ${formatNu(amountNu)}`} className={`${strong ? "size-56" : compact ? "size-36" : "size-52"} rounded-lg bg-white p-1.5`} />
       ) : (
         <div className={`${compact ? "size-36" : "size-52"} animate-pulse rounded-lg bg-muted`} />
       )}
-      <p className="text-sm font-medium">{formatNu(amountNu)} on the bank QR</p>
+      {showAmount ? <p className="text-sm font-medium">{formatNu(amountNu)} on the bank QR</p> : null}
     </div>
   );
 }

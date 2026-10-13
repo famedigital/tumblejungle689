@@ -25,7 +25,7 @@ export function PlayCards({ rates }: { rates: Rate[] }) {
               type="button"
               aria-pressed={selected}
               onClick={() => setOpen(selected ? null : rate.minutes)}
-              className={`w-full rounded-3xl p-5 text-left transition hover:-translate-y-1 hover:shadow-lg ${look.wash} ${look.ink} ${selected ? "ring-2 ring-[#1f4d3a]" : ""}`}
+              className={`flex min-h-36 w-full flex-col items-start rounded-3xl p-5 text-left transition hover:-translate-y-1 hover:shadow-lg ${look.wash} ${look.ink} ${selected ? "ring-2 ring-[#1f4d3a]" : ""}`}
             >
               <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium text-white ${look.chip}`}>
                 {rate.minutes < 60 ? "Quick tumble" : rate.minutes === 60 ? "Favourite" : rate.minutes >= 120 ? "Long stay" : "Extra play"}

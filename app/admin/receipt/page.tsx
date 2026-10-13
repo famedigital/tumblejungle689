@@ -11,7 +11,7 @@ export default async function ReceiptDesignPage({
 }) {
   const session = await requireArea("admin");
   const query = await searchParams;
-  const settings = getSettings();
+  const settings = await getSettings();
 
   return (
     <StaffShell role={session.role} name={session.name} title="Receipt" tone="candy" current="/admin/receipt">

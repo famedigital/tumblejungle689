@@ -11,16 +11,18 @@ export default async function ProductsPage({
 }) {
   const session = await requireArea("admin");
   const query = await searchParams;
-  const settings = getSettings();
-  const today = catalogToday();
+  const settings = await getSettings();
+  const today = await catalogToday();
+  const menu = await listMenu(undefined, true);
+  const categories = await listCategories();
 
   return (
     <StaffShell role={session.role} name={session.name} title="Products" tone="candy" current="/admin/products">
       <Flash error={query.error} ok={query.ok} />
       <ProductHub
         rates={settings.rates}
-        menu={listMenu(undefined, true)}
-        categories={listCategories().map((category) => ({
+        menu={menu}
+        categories={categories.map((category) => ({
           id: category.id,
           name: category.name,
           outlet: category.outlet,

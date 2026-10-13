@@ -34,10 +34,10 @@ const STEPS = [
 export default function VisitInfoPage() {
   return (
     <main className="mx-auto max-w-6xl space-y-8 px-4 py-10">
-      <div className="grid items-end gap-6 lg:grid-cols-[1fr_1fr]">
+      <div className="grid items-start gap-6 lg:grid-cols-[1fr_1fr]">
         <div className="max-w-2xl space-y-3">
           <p className="text-sm font-medium tracking-[0.16em] text-[#1f7a5a] uppercase">One visit, one ticket</p>
-          <h1 className="font-heading text-5xl text-[#146047]">How a Tumble Jungle visit works</h1>
+          <h1 className="font-heading text-4xl text-[#146047] sm:text-5xl">How a Tumble Jungle visit works</h1>
         </div>
         <PhotoFrame
           src="/gallery/pit-overhead.jpg"

@@ -25,6 +25,7 @@ export type Settings = {
   receiptNote: string;
   receiptThanks: string;
   receiptRules: string;
+  journalScan: boolean;
 };
 
 export type MenuItem = {
@@ -65,7 +66,11 @@ export type PaymentRow = {
   amountNu: number;
   station: string;
   createdAt: string;
+  journalRef?: string;
+  payBank?: string;
 };
+
+export type TillActor = { id: number; name: string };
 
 export type RecentTxn = {
   id: number;
@@ -73,9 +78,10 @@ export type RecentTxn = {
   phone: string;
   status: "open" | "settled";
   kind: string;
-  method: PayMethod;
+  method: PayMethod | "";
   amountNu: number;
   station: string;
+  staffName: string;
   createdAt: string;
 };
 
@@ -126,14 +132,11 @@ export function can(role: Role, area: Area): boolean {
   if (area === "desk") return role === "frontdesk";
   if (area === "cafe") return role === "cafe";
   if (area === "restaurant") return role === "restaurant";
-  if (area === "cashier") return role === "cashier";
+  if (area === "cashier") return role === "frontdesk" || role === "cafe" || role === "restaurant" || role === "cashier";
   return false;
 }
 
 export function homeFor(role: Role): string {
   if (role === "admin") return "/admin";
-  if (role === "frontdesk") return "/desk";
-  if (role === "cafe") return "/counter/cafe";
-  if (role === "restaurant") return "/counter/restaurant";
   return "/cashier";
 }

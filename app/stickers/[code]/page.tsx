@@ -11,9 +11,9 @@ export default async function StickersPage({ params }: { params: Promise<{ code:
   const session = await getSession();
   if (!session || (!can(session.role, "cashier") && !can(session.role, "desk"))) redirect("/login");
   const { code } = await params;
-  const visit = getVisitByCode(code);
+  const visit = await getVisitByCode(code);
   if (!visit) notFound();
-  const settings = getSettings();
+  const settings = await getSettings();
   const origin = await requestOrigin();
   const qr = await qrDataUrl(`${origin}${visitPath(visit.code)}`);
   const back = can(session.role, "cashier") ? `/cashier?q=${visit.code}` : `/desk?q=${visit.code}`;

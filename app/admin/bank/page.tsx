@@ -11,7 +11,7 @@ export default async function BankPage({
 }) {
   const session = await requireArea("admin");
   const query = await searchParams;
-  const settings = getSettings();
+  const settings = await getSettings();
 
   return (
     <StaffShell role={session.role} name={session.name} title="Bank" tone="candy" current="/admin/bank">
@@ -21,6 +21,7 @@ export default async function BankPage({
         account={settings.bankAccount}
         payee={settings.payee}
         city={settings.city}
+        journalScan={settings.journalScan}
       />
     </StaffShell>
   );

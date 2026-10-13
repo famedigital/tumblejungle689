@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["qrcode"],
+  serverExternalPackages: ["postgres", "qrcode"],
 };
 
 export default nextConfig;

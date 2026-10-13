@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { saveBankAction } from "@/app/actions";
+import { saveBankAction, saveJournalScanAction } from "@/app/actions";
 import { PayQr } from "@/components/pay-qr";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { parseEmv, toStaticEmv } from "@/lib/emv";
 
 export function BankQrForm({
@@ -11,11 +12,13 @@ export function BankQrForm({
   account,
   payee,
   city,
+  journalScan,
 }: {
   payload: string;
   account: string;
   payee: string;
   city: string;
+  journalScan: boolean;
 }) {
   const [text, setText] = useState(payload);
   const [image, setImage] = useState("");
@@ -54,7 +57,8 @@ export function BankQrForm({
   }
 
   return (
-    <section className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+    <section className="grid items-start gap-4">
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
       <form action={saveBankAction} className="space-y-4 rounded-3xl bg-card p-5 ring-1 ring-foreground/10">
         <input type="hidden" name="back" value="/admin/bank" />
         <input type="hidden" name="payload" value={text} />
@@ -104,6 +108,31 @@ export function BankQrForm({
         <p className="text-sm text-muted-foreground">A Nu 100 sample of the QR the counters will show.</p>
         <PayQr staticPayload={toStaticEmv(text)} amountNu={100} note="Preview" />
       </aside>
+      </div>
+      <JournalScanForm enabled={journalScan} />
     </section>
+  );
+}
+
+function JournalScanForm({ enabled }: { enabled: boolean }) {
+  const [on, setOn] = useState(enabled);
+  return (
+    <form action={saveJournalScanAction} className="space-y-4 rounded-3xl bg-card p-5 ring-1 ring-foreground/10">
+      <input type="hidden" name="back" value="/admin/bank" />
+      <input type="hidden" name="journalScan" value={on ? "1" : "0"} />
+      <div>
+        <h2 className="font-heading text-2xl">Journal scan</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          When this is on, the customer screen watches the bank success page for a Jrnl or RRNO while a payment QR is showing. The cashier can still type the number. Payments work either way.
+        </p>
+      </div>
+      <label className="flex h-12 items-center justify-between gap-4 rounded-xl bg-muted px-4">
+        <span className="text-sm font-medium">{on ? "Journal scan on" : "Journal scan off"}</span>
+        <Switch checked={on} onCheckedChange={setOn} aria-label="Journal scan" />
+      </label>
+      <Button type="submit" className="h-11">
+        Save journal scan
+      </Button>
+    </form>
   );
 }

@@ -27,12 +27,22 @@ export function playSpanMinutes(blocks: { minutes: number }[]) {
 }
 
 function clockText(leftMs: number) {
-  const over = leftMs < 0;
+  const sign = leftMs < 0 ? "+" : "";
   const total = Math.floor(Math.abs(leftMs) / 1000);
-  const minutes = Math.floor(total / 60);
+  const days = Math.floor(total / 86400);
+  const hours = Math.floor((total % 86400) / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
   const seconds = total % 60;
-  const text = `${minutes}:${String(seconds).padStart(2, "0")}`;
-  return over ? `+${text}` : text;
+  if (days > 0) return hours > 0 ? `${sign}${days}d ${hours}h` : `${sign}${days}d`;
+  if (hours > 0) return `${sign}${hours}h ${String(minutes).padStart(2, "0")}m`;
+  return `${sign}${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function paintClock(node: HTMLElement, leftMs: number) {
+  const text = clockText(leftMs);
+  node.textContent = text;
+  node.dataset.over = leftMs < 0 ? "1" : "0";
+  node.dataset.wide = text.length > 5 ? "1" : "0";
 }
 
 export function MiniRing({ end, spanMin }: { end: string; spanMin: number }) {
@@ -45,14 +55,13 @@ export function MiniRing({ end, spanMin }: { end: string; spanMin: number }) {
     const length = 2 * Math.PI * 16;
     return onTick((now) => {
       const left = endMs - now;
-      const remain = Math.min(1, Math.max(0, left / span));
+      const remain = left < 0 ? 1 : Math.min(1, Math.max(0, left / span));
       const phase = left < 0 ? "over" : left <= 120_000 ? "warn" : "ok";
       arc.current?.setAttribute("stroke-dashoffset", String(length * (1 - remain)));
       arc.current?.setAttribute("data-over", left < 0 ? "1" : "0");
       arc.current?.setAttribute("data-soon", phase === "warn" ? "1" : "0");
       if (label.current) {
-        label.current.textContent = clockText(left);
-        label.current.dataset.over = left < 0 ? "1" : "0";
+        paintClock(label.current, left);
         const host = label.current.closest("[data-hold]");
         if (host instanceof HTMLElement && host.dataset.alarm !== phase) host.dataset.alarm = phase;
       }
@@ -61,11 +70,11 @@ export function MiniRing({ end, spanMin }: { end: string; spanMin: number }) {
 
   return (
     <span className="live-mini">
-      <svg viewBox="0 0 40 40" aria-hidden>
+      <svg width="28" height="28" viewBox="0 0 40 40" aria-hidden>
         <circle cx="20" cy="20" r="16" className="live-track" />
         <circle ref={arc} cx="20" cy="20" r="16" className="live-arc" strokeDasharray={`${2 * Math.PI * 16} ${2 * Math.PI * 16}`} />
       </svg>
-      <span ref={label}>0:00</span>
+      <span ref={label} className="live-mini-time">0:00</span>
     </span>
   );
 }
@@ -185,14 +194,14 @@ export function GlowTimer({ end, spanMin }: { end: string; spanMin: number }) {
     if (!gl) {
       return onTick((now) => {
         const left = endMs - now;
-        label.textContent = clockText(left);
+        paintClock(label, left);
         wrap.dataset.over = left < 0 ? "1" : "0";
       });
     }
 
     const prog = program(gl, HERO_FRAG);
     if (!prog) return onTick((now) => {
-      label.textContent = clockText(endMs - now);
+      paintClock(label, endMs - now);
     });
     const uRes = gl.getUniformLocation(prog, "u_res");
     const uRemain = gl.getUniformLocation(prog, "u_remain");
@@ -210,7 +219,7 @@ export function GlowTimer({ end, spanMin }: { end: string; spanMin: number }) {
       gl.uniform1f(uOver, left < 0 ? 1 : 0);
       gl.uniform1f(uTime, now / 1000);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
-      label.textContent = clockText(left);
+      paintClock(label, left);
       wrap.dataset.over = left < 0 ? "1" : "0";
     });
     return () => {

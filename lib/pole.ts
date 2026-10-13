@@ -22,8 +22,16 @@ export type PolePayload = {
 
 export type PoleHello = { kind: "pole-hello" };
 
+export type PoleJournal = { kind: "pole-journal"; ref: string; amount: number | null };
+
 export function isPoleHello(msg: unknown): msg is PoleHello {
   return Boolean(msg && typeof msg === "object" && (msg as PoleHello).kind === "pole-hello");
+}
+
+export function isPoleJournal(msg: unknown): msg is PoleJournal {
+  if (!msg || typeof msg !== "object") return false;
+  const row = msg as PoleJournal;
+  return row.kind === "pole-journal" && typeof row.ref === "string" && row.ref.length > 0;
 }
 
 export function isPolePayload(msg: unknown): msg is PolePayload {
@@ -71,5 +79,12 @@ export function poleHello() {
   if (typeof BroadcastChannel === "undefined") return;
   const channel = new BroadcastChannel(POLE_CHANNEL);
   channel.postMessage({ kind: "pole-hello" } satisfies PoleHello);
+  channel.close();
+}
+
+export function polePostJournal(ref: string, amount: number | null) {
+  if (typeof BroadcastChannel === "undefined") return;
+  const channel = new BroadcastChannel(POLE_CHANNEL);
+  channel.postMessage({ kind: "pole-journal", ref, amount } satisfies PoleJournal);
   channel.close();
 }

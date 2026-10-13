@@ -4,9 +4,6 @@ import { Button } from "@/components/ui/button";
 import { can, type Role } from "@/lib/types";
 
 const LINKS: { href: string; label: string; area: "desk" | "cafe" | "restaurant" | "cashier" | "admin" }[] = [
-  { href: "/desk", label: "Front desk", area: "desk" },
-  { href: "/counter/cafe", label: "Cafe", area: "cafe" },
-  { href: "/counter/restaurant", label: "Restaurant", area: "restaurant" },
   { href: "/cashier", label: "Cashier", area: "cashier" },
   { href: "/admin/products", label: "Products", area: "admin" },
   { href: "/admin/bank", label: "Bank", area: "admin" },

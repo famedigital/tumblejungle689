@@ -9,9 +9,9 @@ import Link from "next/link";
 
 export default async function TicketPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = await params;
-  const visit = getVisitByCode(code);
+  const visit = await getVisitByCode(code);
   if (!visit) notFound();
-  const settings = getSettings();
+  const settings = await getSettings();
   const origin = await requestOrigin();
   const url = `${origin}${visitPath(visit.code)}`;
   const qr = await qrDataUrl(url);

@@ -2,52 +2,55 @@ import Link from "next/link";
 import { getSettings } from "@/lib/domain";
 
 const NAV = [
-  { href: "/play", label: "Play", wash: "bg-[#ffe8a3] hover:bg-[#ffd56a]" },
-  { href: "/eat", label: "Cafe and restaurant", wash: "bg-[#ffc9c0] hover:bg-[#ffb0a3]" },
-  { href: "/visit", label: "Your visit", wash: "bg-[#b7ebe3] hover:bg-[#8fddd2]" },
+  { href: "/play", label: "Play", short: "Play", wash: "bg-[#f3e2b0] hover:bg-[#e8d08a]" },
+  { href: "/eat", label: "Cafe and restaurant", short: "Eat", wash: "bg-[#f6d2cb] hover:bg-[#f0bfb6]" },
+  { href: "/visit", label: "Your visit", short: "Visit", wash: "bg-[#d5efe8] hover:bg-[#c3e6dd]" },
 ];
 
-export function SiteHeader() {
-  const settings = getSettings();
+export async function SiteHeader() {
+  const settings = await getSettings();
   return (
-    <header className="sticky top-0 z-30 border-b border-[#ffb703]/50 bg-[#fffaf2]/90 backdrop-blur-md">
-      <div className="h-1.5 bg-[linear-gradient(90deg,#ffb703_0%,#ff7a59_28%,#2ec4b6_62%,#7bdff2_82%,#ffb703_100%)]" />
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-4 py-3">
-        <Link href="/" className="inline-flex items-center gap-2 font-heading text-2xl text-[#146047]">
-          <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#ffb703] text-sm text-[#3d2a00] shadow-sm ring-2 ring-white">
-            TJ
-          </span>
-          {settings.venueName}
-        </Link>
-        <nav className="flex flex-wrap gap-2 text-sm">
+    <header className="sticky top-0 z-30 border-b border-[#146047]/15 bg-[#f7f4ee]/95 backdrop-blur-md">
+      <div className="h-1 bg-[#146047]" />
+      <div className="mx-auto max-w-6xl px-4 py-3">
+        <div className="flex items-center gap-3">
+          <Link href="/" className="inline-flex min-w-0 items-center gap-2 font-heading text-xl text-[#146047] sm:text-2xl">
+            <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e2a008] text-sm text-[#3d2a00]">
+              TJ
+            </span>
+            <span className="truncate">{settings.venueName}</span>
+          </Link>
+          <Link
+            href="/login"
+            className="ml-auto inline-flex h-11 shrink-0 items-center rounded-full bg-[#146047] px-4 text-sm font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e2a008]"
+          >
+            Staff
+          </Link>
+        </div>
+        <nav className="mt-3 grid grid-cols-3 gap-2" aria-label="Pages">
           {NAV.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className={`rounded-full px-3 py-1.5 font-medium text-[#1f4d3a] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1f7a5a] ${item.wash}`}
+              className={`inline-flex h-11 items-center justify-center rounded-full px-2 text-center text-sm font-medium text-[#1c2420] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#146047] ${item.wash}`}
             >
-              {item.label}
+              <span className="sm:hidden">{item.short}</span>
+              <span className="hidden sm:inline">{item.label}</span>
             </Link>
           ))}
         </nav>
-        <Link
-          href="/login"
-          className="ml-auto rounded-full bg-[#1f7a5a] px-3 py-1.5 text-sm font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ffb703]"
-        >
-          Staff
-        </Link>
       </div>
     </header>
   );
 }
 
-export function SiteFooter() {
-  const settings = getSettings();
+export async function SiteFooter() {
+  const settings = await getSettings();
   return (
-    <footer className="mt-auto border-t border-[#ffb703]/40 bg-[#146047] text-[#f4fff8]">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-end justify-between gap-x-6 gap-y-3 px-4 py-8 text-sm">
+    <footer className="mt-auto border-t border-[#e2a008]/40 bg-[#146047] text-[#f4fff8]">
+      <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-8 text-sm sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-1">
-          <p className="font-heading text-2xl text-[#ffb703]">{settings.venueName}</p>
+          <p className="font-heading text-2xl text-[#e2a008]">{settings.venueName}</p>
           <p>{settings.address}</p>
           {settings.hours ? <p>Hours {settings.hours}</p> : null}
           {settings.phone ? <p>{settings.phone}</p> : null}

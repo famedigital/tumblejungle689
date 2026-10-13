@@ -8,6 +8,9 @@ const KIND: Record<string, string> = {
   playtime: "Play",
   extension: "Extra play",
   food: "Food",
+  void: "Void",
+  waive: "Waived",
+  leave: "Left",
 };
 
 const STATION: Record<string, string> = {
@@ -53,13 +56,13 @@ export function RecentSheet({
             Close
           </button>
         </div>
-        <p className="cash-hint">Today’s payments. Up and down move. Enter opens the receipt.</p>
+        <p className="cash-hint">Today’s payments, voids, and closes. Up and down move. Enter opens the receipt.</p>
         {recent.length === 0 ? (
           <p className="cash-hint">No payments yet today.</p>
         ) : (
           <ul ref={listRef} className="cash-recent">
             {recent.map((item, index) => (
-              <li key={item.id}>
+              <li key={`${item.kind}-${item.id}-${item.createdAt}`}>
                 <button
                   type="button"
                   aria-current={index === selected ? "true" : undefined}
@@ -74,8 +77,9 @@ export function RecentSheet({
                       {formatPhone(item.phone)} · {item.code}
                     </strong>
                     <small>
-                      {formatWhen(item.createdAt)} · {KIND[item.kind] ?? item.kind} · {STATION[item.station] ?? item.station}
-                      {item.method === "bank_qr" ? " · Bank QR" : " · Cash"}
+                      {formatWhen(item.createdAt)} · {KIND[item.kind] ?? item.kind}
+                      {item.method === "bank_qr" ? " · Bank QR" : item.method === "cash" ? " · Cash" : ""}
+                      {item.staffName ? ` · ${item.staffName}` : ` · ${STATION[item.station] ?? item.station}`}
                       {item.status === "open" ? " · Open" : ""}
                     </small>
                   </span>

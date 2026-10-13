@@ -14,7 +14,7 @@ const LOOK = [
     src: "/brand/hero-play.jpg",
     alt: "Green and yellow climbing frames with a small slide",
     label: "Climbing frames",
-    className: "md:col-span-2 md:row-span-2",
+    className: "col-span-2 md:row-span-2",
   },
   {
     src: "/gallery/pit-overhead.jpg",
@@ -44,7 +44,7 @@ const LOOK = [
     src: "/gallery/friends.jpg",
     alt: "Two children playing together beside a wooden slide",
     label: "Side by side",
-    className: "md:col-span-2",
+    className: "col-span-2 md:col-span-2",
   },
   {
     src: "/brand/cafe.jpg",
@@ -80,7 +80,7 @@ const LOOK = [
     src: "/gallery/circle.jpg",
     alt: "Children sitting in a circle on green play flooring",
     label: "Together",
-    className: "md:col-span-4",
+    className: "col-span-2 md:col-span-4",
   },
 ];
 
@@ -114,8 +114,8 @@ const STEPS = [
   },
 ];
 
-export default function HomePage() {
-  const settings = getSettings();
+export default async function HomePage() {
+  const settings = await getSettings();
   return (
     <main>
       <section className="mx-auto grid max-w-6xl items-center gap-8 px-4 py-10 lg:grid-cols-[0.92fr_1.08fr] lg:py-14">
@@ -123,21 +123,21 @@ export default function HomePage() {
           <p className="inline-flex rounded-full bg-[#ffb703] px-3 py-1 text-sm font-medium text-[#3d2a00] shadow-sm">
             {settings.address}
           </p>
-          <h1 className="font-heading text-5xl leading-[0.98] text-balance text-[#146047] sm:text-7xl">
+          <h1 className="font-heading text-4xl leading-[0.98] text-balance text-[#146047] sm:text-6xl">
             {settings.venueName}
           </h1>
           <p className="max-w-xl text-2xl leading-snug text-[#1f4d3a]">{settings.tagline}</p>
           <p className="max-w-xl text-base leading-relaxed text-[#245c46]">{settings.about}</p>
-          <div className="flex flex-wrap gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:flex sm:flex-wrap">
             <Link
               href="/play"
-              className="inline-flex h-12 items-center rounded-full bg-[#1f7a5a] px-5 text-sm font-medium text-white shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ffb703]"
+              className="inline-flex h-12 w-full items-center justify-center rounded-full bg-[#146047] px-5 text-sm font-medium text-white shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e2a008] sm:w-auto"
             >
               See play times
             </Link>
             <Link
               href="/eat"
-              className="inline-flex h-12 items-center rounded-full bg-[#ff7a59] px-5 text-sm font-medium text-white shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1f7a5a]"
+              className="inline-flex h-12 w-full items-center justify-center rounded-full bg-[#c45c45] px-5 text-sm font-medium text-white shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#146047] sm:w-auto"
             >
               Peek at the menu
             </Link>
@@ -175,13 +175,13 @@ export default function HomePage() {
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <p className="text-sm font-medium tracking-[0.16em] text-[#c2410c] uppercase">Look around</p>
-            <h2 className="font-heading text-4xl text-[#146047] sm:text-5xl">More of the jungle</h2>
+            <h2 className="font-heading text-4xl text-[#146047]">More of the jungle</h2>
           </div>
           <p className="max-w-sm text-sm leading-relaxed text-[#1f4d3a]">
             Slides, pits, and a table for the grown-ups. The same visit covers all of it.
           </p>
         </div>
-        <div className="mt-5 grid auto-rows-[10.5rem] grid-cols-2 gap-3 md:auto-rows-[12rem] md:grid-cols-4">
+        <div className="mt-5 grid auto-rows-[12rem] grid-cols-2 gap-3 sm:auto-rows-[13rem] md:grid-cols-4">
           {LOOK.map((photo) => (
             <PhotoFrame
               key={photo.src + photo.label}
@@ -226,7 +226,7 @@ export default function HomePage() {
             </p>
             <Link
               href="/visit"
-              className="inline-flex h-12 items-center rounded-full bg-[#ffb703] px-5 text-sm font-medium text-[#3d2a00] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+              className="inline-flex h-12 w-full items-center justify-center rounded-full bg-[#e2a008] px-5 text-sm font-medium text-[#3d2a00] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:w-auto"
             >
               How a visit works
             </Link>

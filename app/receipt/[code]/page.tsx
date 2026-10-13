@@ -5,13 +5,14 @@ import { requireArea } from "@/lib/auth";
 import { getSettings, getVisitByCode } from "@/lib/domain";
 import { formatPhone, formatWhen } from "@/lib/format";
 import { quoteOvertime } from "@/lib/overtime";
+import { bankFromJournal } from "@/lib/pay-banks";
 
 export default async function ReceiptPage({ params }: { params: Promise<{ code: string }> }) {
   await requireArea("cashier");
   const { code } = await params;
-  const visit = getVisitByCode(code);
+  const visit = await getVisitByCode(code);
   if (!visit) notFound();
-  const settings = getSettings();
+  const settings = await getSettings();
   const overtime = visit.status === "open" ? quoteOvertime(visit.paidUntil, settings.rates) : null;
   const lines = [
     ...visit.blocks.map((block) => ({
@@ -32,6 +33,15 @@ export default async function ReceiptPage({ params }: { params: Promise<{ code: 
   ];
   const cash = visit.payments.filter((payment) => payment.method === "cash").reduce((sum, payment) => sum + payment.amountNu, 0);
   const bank = visit.payments.filter((payment) => payment.method === "bank_qr").reduce((sum, payment) => sum + payment.amountNu, 0);
+  const banks: { name: string; ref: string; amount: number }[] = [];
+  for (const payment of visit.payments) {
+    if (payment.method !== "bank_qr" || payment.amountNu <= 0) continue;
+    const ref = payment.journalRef ?? "";
+    const name = payment.payBank || bankFromJournal(ref) || "Bank QR";
+    const hit = banks.find((row) => row.name === name && row.ref === ref);
+    if (hit) hit.amount += payment.amountNu;
+    else banks.push({ name, ref, amount: payment.amountNu });
+  }
   const total = visit.status === "open" && visit.dueNu > 0 ? visit.dueNu : cash + bank;
 
   return (
@@ -47,6 +57,7 @@ export default async function ReceiptPage({ params }: { params: Promise<{ code: 
         total={total}
         cash={cash}
         bank={bank}
+        banks={banks}
         note={settings.receiptNote}
         thanks={settings.receiptThanks}
         rules={settings.receiptRules.split(/\r?\n/)}

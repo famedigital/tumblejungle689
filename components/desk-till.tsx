@@ -1,12 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { addPlayAction, cancelHoldAction, checkInAction, logoutAction, payPlayAction, removeLineAction, removePlayAction } from "@/app/actions";
 import { PassCard } from "@/components/pass-card";
-import { PayQr } from "@/components/pay-qr";
 import { Scanner } from "@/components/scanner";
+import { TenderSheet, type TenderMethod } from "@/components/tender-sheet";
+import { TillShell } from "@/components/till-shell";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Field } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { formatNu, formatPhone, formatWhen, minutesLeft } from "@/lib/format";
+import { submitOpenTender, useTillHotkeys } from "@/lib/hotkeys";
+import { buildDynamicEmv } from "@/lib/emv";
+import { isPoleHello, polePost, POLE_CHANNEL, type PolePayload } from "@/lib/pole";
 import type { Rate, VisitView } from "@/lib/types";
 
 export function DeskTill({
@@ -23,6 +32,7 @@ export function DeskTill({
   ticketUrl,
   venueName,
   query,
+  journalScan = false,
 }: {
   staffName: string;
   staffRole: string;
@@ -37,18 +47,22 @@ export function DeskTill({
   ticketUrl: string;
   venueName: string;
   query?: string;
+  journalScan?: boolean;
 }) {
   const [phone, setPhone] = useState(query ?? "");
   const [name, setName] = useState("");
   const [children, setChildren] = useState(1);
   const [minutes, setMinutes] = useState(rates[0]?.minutes ?? 60);
-  const [method, setMethod] = useState<"cash" | "bank_qr">("cash");
   const [cam, setCam] = useState(false);
   const [showPass, setShowPass] = useState(Boolean(issued));
+  const [tenderOpen, setTenderOpen] = useState(false);
+  const [method, setMethod] = useState<TenderMethod>("bank_qr");
+  const [scanNu, setScanNu] = useState(0);
   const rate = rates.find((item) => item.minutes === minutes) ?? rates[0];
   const playDue = visit?.blocks.filter((block) => !block.paid).reduce((sum, block) => sum + block.amountNu, 0) ?? 0;
   const openVisit = visit?.status === "open" ? visit : null;
   const due = openVisit ? openVisit.dueNu : visit ? 0 : rate?.amountNu ?? 0;
+  const tenderAmount = openVisit ? playDue : rate?.amountNu ?? 0;
   const left = visit ? minutesLeft(visit.paidUntil) : null;
   const pass = issued ?? (showPass ? visit : null);
   const status =
@@ -57,289 +71,286 @@ export function DeskTill({
     (visit
       ? `${visit.code} · ${formatPhone(visit.phone)}${visit.status === "settled" ? " · closed" : ""}`
       : "Scan a phone or pick play time, then Tender");
+  const canTender = Boolean(openVisit ? playDue > 0 : rate && phone.replace(/\D/g, "").length === 8);
+
+  useTillHotkeys((letter) => {
+    if (letter !== "s") return;
+    if (tenderOpen) submitOpenTender();
+    else if (canTender) setTenderOpen(true);
+  });
+  const poleRef = useRef<PolePayload | null>(null);
+
+  useEffect(() => {
+    const bankNu = method === "cash" ? 0 : method === "split" ? scanNu : tenderAmount;
+    const showQr = tenderOpen && bankNu > 0;
+    const payload: PolePayload = {
+      shop: venueName,
+      code: openVisit?.code ?? "",
+      phone: openVisit ? formatPhone(openVisit.phone) : formatPhone(phone),
+      lines: openVisit
+        ? openVisit.blocks.map((block) => ({
+            name: `Play ${block.minutes} min`,
+            qty: 1,
+            amount: block.amountNu,
+            paid: block.paid,
+          }))
+        : [{ name: `Play ${minutes} min`, qty: 1, amount: tenderAmount, paid: false }],
+      due: tenderAmount,
+      payNu: showQr ? bankNu : 0,
+      qr: showQr ? buildDynamicEmv(staticPayload, bankNu, openVisit ? openVisit.code : `Play ${minutes}m`) : "",
+      extra: "",
+      thanks: false,
+    };
+    poleRef.current = payload;
+    polePost(payload);
+  }, [tenderOpen, method, scanNu, tenderAmount, openVisit, venueName, staticPayload, minutes, phone]);
+
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") return;
+    const channel = new BroadcastChannel(POLE_CHANNEL);
+    channel.onmessage = (event) => {
+      if (isPoleHello(event.data) && poleRef.current) polePost(poleRef.current);
+    };
+    return () => channel.close();
+  }, []);
 
   return (
-    <div data-surface="pos">
-      <div className="tshong-till">
-        <div className="tshong-till-bar">
-          <form action="/desk" className="tshong-till-scan-row">
-            <label className="tshong-till-scan-wrap">
-              <span>Scan</span>
-              <input
-                name="q"
-                autoFocus
-                autoComplete="off"
-                aria-label="Phone or ticket"
-                placeholder="8-digit phone or ticket code"
-                value={phone}
-                onChange={(event) => setPhone(event.target.value)}
-                className="tshong-till-scan"
-              />
-            </label>
-            <button type="submit" className="tshong-till-cam">
-              Find
-            </button>
-            <button type="button" className="tshong-till-cam" aria-pressed={cam} onClick={() => setCam((openCam) => !openCam)}>
-              Cam
-            </button>
-          </form>
-          <div className="tshong-due">
-            <p className="text-[10px] uppercase tracking-[0.12em]">
-              Due · {visit ? visit.lines.length + visit.blocks.length : 1} ln
-            </p>
-            <p className="font-heading text-[1.35rem] leading-none tabular-nums">{formatNu(due)}</p>
-            <p className="text-[11px]">
-              {visit ? (visit.status === "settled" ? "Closed" : left != null && left < 0 ? "Overtime" : "Open visit") : "New play"}
-            </p>
-          </div>
-        </div>
-
-        <div className="tshong-till-live">
-          <p className={`truncate text-sm ${error ? "text-[var(--danger)]" : "text-[var(--ink)]"}`}>{status}</p>
-          <div className="tshong-till-tabs" role="tablist" aria-label="Open visits">
-            {open.slice(0, 6).map((item) => (
-              <Link
-                key={item.id}
-                href={`/desk?q=${item.code}`}
-                role="tab"
-                aria-selected={visit?.code === item.code}
-                className="tshong-till-tab"
-              >
-                {item.code}
-              </Link>
-            ))}
-          </div>
-          <div className="tshong-till-actions">
-            <div className="tshong-till-tools">
-              <button type="button" className="tshong-till-tool" onClick={() => setShowPass(true)} disabled={!visit && !issued}>
-                Ticket
-              </button>
-              <button
-                type="button"
-                className="tshong-till-tool"
-                aria-pressed={method === "bank_qr"}
-                onClick={() => setMethod((current) => (current === "cash" ? "bank_qr" : "cash"))}
-              >
-                {method === "cash" ? "Cash" : "Bank QR"}
-              </button>
-              <Tender
-                visit={openVisit}
-                minutes={minutes}
-                method={method}
-                playDue={playDue}
-                phone={phone}
-                name={name}
-                children={children}
-                disabled={!openVisit && !rate}
-              />
-            </div>
-          </div>
-        </div>
-
-        {cam ? (
-          <div className="border-b border-[var(--line)] bg-[var(--paper)] px-3 py-2">
-            <Scanner to="/desk" defaultOpen />
-          </div>
-        ) : null}
-
-        <div className="tshong-till-body">
-          <div className="tshong-till-ticket">
-            <table>
-              <thead>
-                <tr>
-                  <th>Item</th>
-                  <th>Qty</th>
-                  <th>Amount</th>
-                  <th>State</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visit ? (
-                  <>
-                    {visit.blocks.map((block) => (
-                      <tr key={block.id} aria-selected={!block.paid}>
-                        <td>Play {block.minutes} min</td>
-                        <td className="tabular-nums">1</td>
-                        <td className="tabular-nums">{formatNu(block.amountNu)}</td>
-                        <td>
-                          {block.paid ? "Paid" : "Due"}
-                          {!block.paid && visit.blocks[visit.blocks.length - 1]?.id === block.id ? (
-                            <form action={removePlayAction}>
-                              <input type="hidden" name="visitId" value={visit.id} />
-                              <input type="hidden" name="code" value={visit.code} />
-                              <input type="hidden" name="back" value="/desk" />
-                              <button type="submit" className="tshong-till-action">
-                                Delete
-                              </button>
-                            </form>
-                          ) : null}
-                        </td>
-                      </tr>
-                    ))}
-                    {visit.lines.map((line) => (
-                      <tr key={line.id}>
-                        <td>
-                          {line.name}
-                          <span className="mt-0.5 block text-[11px] text-[var(--ink-mute)]">{line.outlet}</span>
-                        </td>
-                        <td className="tabular-nums">{line.qty}</td>
-                        <td className="tabular-nums">{formatNu(line.amountNu)}</td>
-                        <td>
-                          {line.paid ? "Paid" : "Due"}
-                          {!line.paid ? (
-                            <form action={removeLineAction}>
-                              <input type="hidden" name="visitId" value={visit.id} />
-                              <input type="hidden" name="lineId" value={line.id} />
-                              <input type="hidden" name="code" value={visit.code} />
-                              <input type="hidden" name="back" value="/desk" />
-                              <button type="submit" className="tshong-till-action">
-                                Delete
-                              </button>
-                            </form>
-                          ) : null}
-                        </td>
-                      </tr>
-                    ))}
-                  </>
-                ) : (
-                  <tr aria-selected="true">
-                    <td>New play {rate?.minutes ?? 0} min</td>
-                    <td>1</td>
-                    <td className="tabular-nums">{formatNu(rate?.amountNu ?? 0)}</td>
-                    <td>Not issued</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          <aside className="tshong-till-rail">
-            <section>
-              <p className="tshong-till-kicker">On till</p>
-              <p className="text-sm">
-                {staffName} · {staffRole}
-              </p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {openVisit ? (
-                  <form action={cancelHoldAction}>
-                    <input type="hidden" name="visitId" value={openVisit.id} />
-                    <input type="hidden" name="code" value={openVisit.code} />
-                    <input type="hidden" name="back" value="/desk" />
-                    <button type="submit" className="tshong-till-action">
-                      Remove hold
-                    </button>
-                  </form>
-                ) : null}
-                <form action={logoutAction}>
-                  <button type="submit" className="tshong-till-action">
-                    Lock
-                  </button>
-                </form>
-                {staffRole === "admin" ? (
-                  <Link href="/admin" className="tshong-till-action">
-                    Office
-                  </Link>
-                ) : null}
-              </div>
-            </section>
-            <section>
-              <p className="tshong-till-kicker">Bill</p>
-              <dl className="tshong-till-sum">
-                <div>
-                  <dt>Phone</dt>
-                  <dd>{visit ? formatPhone(visit.phone) : "New"}</dd>
-                </div>
-                <div>
-                  <dt>Children</dt>
-                  <dd className="tabular-nums">{visit?.childCount ?? children}</dd>
-                </div>
-                <div>
-                  <dt>Until</dt>
-                  <dd>{visit ? formatWhen(visit.paidUntil) : "After tender"}</dd>
-                </div>
-                <div className="tshong-till-sum-due">
-                  <dt>Grand total</dt>
-                  <dd className="tabular-nums">{formatNu(due)}</dd>
-                </div>
-              </dl>
-            </section>
-            {!openVisit ? (
-              <div className="grid gap-2">
-                <label className="text-sm">
-                  Guardian
-                  <input
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    className="mt-1 h-9 w-full border border-[var(--line)] bg-[var(--canvas)] px-2"
-                  />
-                </label>
-                <label className="text-sm">
-                  Children
-                  <input
-                    type="number"
-                    min={1}
-                    max={12}
-                    value={children}
-                    onChange={(event) => setChildren(Number(event.target.value) || 1)}
-                    className="mt-1 h-9 w-full border border-[var(--line)] bg-[var(--canvas)] px-2"
-                  />
-                </label>
-              </div>
-            ) : null}
-            {method === "bank_qr" && due > 0 ? (
-              <PayQr staticPayload={staticPayload} amountNu={due} note={visit ? visit.code : `Play ${minutes}m`} />
-            ) : null}
-          </aside>
-        </div>
-
-        <div className="tshong-till-pad">
-          {rates.slice(0, 3).map((item) => (
+    <TillShell
+      scanAction="/desk"
+      scanValue={phone}
+      onScanChange={setPhone}
+      dueEyebrow="Due"
+      dueValue={formatNu(due)}
+      dueHint={visit ? (visit.status === "settled" ? "Closed" : left != null && left < 0 ? "Overtime" : "Open visit") : "New play"}
+      status={status}
+      statusBad={Boolean(error)}
+      tools={
+        <>
+          {open.slice(0, 6).map((item) => (
+            <Button key={item.id} variant={visit?.code === item.code ? "default" : "outline"} className="h-11" asChild>
+              <Link href={`/desk?q=${item.code}`}>{item.code}</Link>
+            </Button>
+          ))}
+          <Button type="button" variant="outline" className="h-11" onClick={() => setShowPass(true)} disabled={!visit && !issued}>
+            Ticket
+          </Button>
+          <Button type="button" variant={cam ? "secondary" : "outline"} className="h-11" aria-pressed={cam} onClick={() => setCam((openCam) => !openCam)}>
+            Camera
+          </Button>
+          <Button type="button" className="h-11" disabled={!canTender} onClick={() => setTenderOpen(true)}>
+            Tender
+            <span className="ml-1 text-[10px] tracking-wide uppercase opacity-80">Alt+S</span>
+          </Button>
+        </>
+      }
+      footer={
+        <>
+          {rates.map((item) => (
             <PlayKey key={item.minutes} minutes={item.minutes} visit={openVisit} pressed={minutes === item.minutes} onPick={() => setMinutes(item.minutes)} />
           ))}
-          <button type="button" className="tshong-till-pad-del" onClick={() => setCam(true)}>
-            Scan
-          </button>
-          <Tender visit={openVisit} minutes={minutes} method={method} playDue={playDue} phone={phone} name={name} children={children} pad />
-        </div>
-
-        <footer className="tshong-till-keys" style={{ gridTemplateColumns: `repeat(${Math.max(rates.length + 1, 4)}, minmax(0, 1fr))` }}>
-          {rates.map((item) => (
-            <PlayKey
-              key={item.minutes}
-              minutes={item.minutes}
-              visit={openVisit}
-              pressed={minutes === item.minutes}
-              onPick={() => setMinutes(item.minutes)}
-              fkey
-            />
-          ))}
           {openVisit && playDue > 0 ? (
-            <form action={removePlayAction} className="contents">
+            <form action={removePlayAction}>
               <input type="hidden" name="visitId" value={openVisit.id} />
               <input type="hidden" name="code" value={openVisit.code} />
               <input type="hidden" name="back" value="/desk" />
-              <button type="submit" className="tshong-fkey">
-                <small>Del</small>
-                <span>Unpaid play</span>
-              </button>
+              <Button type="submit" variant="outline" className="h-12 w-full">
+                Unpaid play
+              </Button>
             </form>
           ) : (
-            <span className="tshong-fkey">
-              <small>Desk</small>
-              <span>{venueName}</span>
-            </span>
+            <Button type="button" variant="outline" className="h-12" disabled>
+              {venueName}
+            </Button>
           )}
-        </footer>
+        </>
+      }
+    >
+      {cam ? (
+        <div className="border-b border-border bg-card px-3 py-2">
+          <Scanner to="/desk" defaultOpen />
+        </div>
+      ) : null}
+      <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="min-h-0 overflow-auto p-3">
+          <table className="w-full text-left text-sm">
+            <thead className="text-xs tracking-wide text-muted-foreground uppercase">
+              <tr>
+                <th className="py-2">Item</th>
+                <th>Qty</th>
+                <th>Amount</th>
+                <th>State</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visit ? (
+                <>
+                  {visit.blocks.map((block) => (
+                    <tr key={block.id} className="border-t border-border">
+                      <td className="py-3">Play {block.minutes} min</td>
+                      <td className="tabular-nums">1</td>
+                      <td className="tabular-nums">{formatNu(block.amountNu)}</td>
+                      <td>
+                        {block.paid ? "Paid" : "Due"}
+                        {!block.paid && visit.blocks[visit.blocks.length - 1]?.id === block.id ? (
+                          <form action={removePlayAction}>
+                            <input type="hidden" name="visitId" value={visit.id} />
+                            <input type="hidden" name="code" value={visit.code} />
+                            <input type="hidden" name="back" value="/desk" />
+                            <Button type="submit" variant="ghost" size="sm">
+                              Delete
+                            </Button>
+                          </form>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                  {visit.lines.map((line) => (
+                    <tr key={line.id} className="border-t border-border">
+                      <td className="py-3">
+                        {line.name}
+                        <span className="mt-0.5 block text-xs text-muted-foreground">{line.outlet}</span>
+                      </td>
+                      <td className="tabular-nums">{line.qty}</td>
+                      <td className="tabular-nums">{formatNu(line.amountNu)}</td>
+                      <td>
+                        {line.paid ? "Paid" : "Due"}
+                        {!line.paid ? (
+                          <form action={removeLineAction}>
+                            <input type="hidden" name="visitId" value={visit.id} />
+                            <input type="hidden" name="lineId" value={line.id} />
+                            <input type="hidden" name="code" value={visit.code} />
+                            <input type="hidden" name="back" value="/desk" />
+                            <Button type="submit" variant="ghost" size="sm">
+                              Delete
+                            </Button>
+                          </form>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </>
+              ) : (
+                <tr className="border-t border-border">
+                  <td className="py-3">New play {rate?.minutes ?? 0} min</td>
+                  <td>1</td>
+                  <td className="tabular-nums">{formatNu(rate?.amountNu ?? 0)}</td>
+                  <td>Not issued</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        <div className="till-slip-slot">
+          <Card className="till-slip gap-4 overflow-visible rounded-none p-4 ring-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge>{staffName}</Badge>
+            <Badge variant="outline">{staffRole}</Badge>
+          </div>
+          <dl className="grid grid-cols-2 gap-2 text-sm">
+            <div>
+              <dt className="text-muted-foreground">Phone</dt>
+              <dd>{visit ? formatPhone(visit.phone) : "New"}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Children</dt>
+              <dd className="tabular-nums">{visit?.childCount ?? children}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Until</dt>
+              <dd>{visit ? formatWhen(visit.paidUntil) : "After tender"}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Due</dt>
+              <dd className="font-medium tabular-nums">{formatNu(due)}</dd>
+            </div>
+          </dl>
+          {!openVisit ? (
+            <div className="grid gap-3">
+              <Field label="Guardian">
+                <Input value={name} className="h-12" onChange={(event) => setName(event.target.value)} />
+              </Field>
+              <Field label="Children">
+                <Input
+                  type="number"
+                  min={1}
+                  max={12}
+                  value={children}
+                  className="h-12"
+                  onChange={(event) => setChildren(Number(event.target.value) || 1)}
+                />
+              </Field>
+            </div>
+          ) : (
+            <p className="text-sm">{visit?.guardianName || "Guest"}</p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            {openVisit ? (
+              <form action={cancelHoldAction}>
+                <input type="hidden" name="visitId" value={openVisit.id} />
+                <input type="hidden" name="code" value={openVisit.code} />
+                <input type="hidden" name="back" value="/desk" />
+                <Button type="submit" variant="outline" className="h-11">
+                  Remove hold
+                </Button>
+              </form>
+            ) : null}
+            <form action={logoutAction}>
+              <Button type="submit" variant="outline" className="h-11">
+                Lock
+              </Button>
+            </form>
+            {staffRole === "admin" ? (
+              <Button variant="outline" className="h-11" asChild>
+                <Link href="/admin">Office</Link>
+              </Button>
+            ) : null}
+          </div>
+          </Card>
+        </div>
       </div>
-
+      {tenderOpen && canTender ? (
+        <TenderSheet
+          action={openVisit ? payPlayAction : checkInAction}
+          method={method}
+          onMethod={setMethod}
+          onScan={setScanNu}
+          amountNu={tenderAmount}
+          staticPayload={staticPayload}
+          note={openVisit ? openVisit.code : `Play ${minutes}m`}
+          journalScan={journalScan}
+          customer={
+            openVisit
+              ? { name: openVisit.guardianName, phone: openVisit.phone, children: openVisit.childCount }
+              : { name, phone, children }
+          }
+          onClose={() => setTenderOpen(false)}
+        >
+          {openVisit ? (
+            <>
+              <input type="hidden" name="visitId" value={openVisit.id} />
+              <input type="hidden" name="code" value={openVisit.code} />
+              <input type="hidden" name="back" value="/desk" />
+            </>
+          ) : (
+            <>
+              <input type="hidden" name="back" value="/desk" />
+              <input type="hidden" name="minutes" value={minutes} />
+              <input type="hidden" name="phone" value={phone} />
+              <input type="hidden" name="name" value={name} />
+              <input type="hidden" name="childCount" value={children} />
+            </>
+          )}
+        </TenderSheet>
+      ) : null}
       {pass && qr && showPass ? (
-        <div className="absolute inset-0 z-30 overflow-auto bg-[var(--paper)] p-4">
-          <button type="button" className="tshong-till-action mb-3" onClick={() => setShowPass(false)}>
+        <div className="absolute inset-0 z-30 overflow-auto bg-card p-4">
+          <Button type="button" variant="outline" className="mb-3 h-11" onClick={() => setShowPass(false)}>
             Back to till
-          </button>
+          </Button>
           <PassCard visit={pass} venueName={venueName} qr={qr} ticketUrl={ticketUrl} />
         </div>
       ) : null}
-    </div>
+    </TillShell>
   );
 }
 
@@ -348,99 +359,29 @@ function PlayKey({
   visit,
   pressed,
   onPick,
-  fkey = false,
 }: {
   minutes: number;
   visit: VisitView | null;
   pressed: boolean;
   onPick: () => void;
-  fkey?: boolean;
 }) {
-  const className = fkey ? `tshong-fkey ${pressed ? "tshong-fkey-go" : ""}` : undefined;
-  const label = (
-    <>
-      {fkey ? <small>{minutes}</small> : null}
-      <span>{fkey ? "min" : visit ? `+${minutes} min` : `${minutes} min`}</span>
-    </>
-  );
+  const label = visit ? `+${minutes} min` : `${minutes} min`;
   if (visit) {
     return (
-      <form action={addPlayAction} className="contents">
+      <form action={addPlayAction}>
         <input type="hidden" name="visitId" value={visit.id} />
         <input type="hidden" name="code" value={visit.code} />
         <input type="hidden" name="back" value="/desk" />
         <input type="hidden" name="minutes" value={minutes} />
-        <button type="submit" className={className} aria-pressed={pressed}>
+        <Button type="submit" variant={pressed ? "default" : "outline"} className="h-12 w-full">
           {label}
-        </button>
+        </Button>
       </form>
     );
   }
   return (
-    <button type="button" className={className} aria-pressed={pressed} onClick={onPick}>
+    <Button type="button" variant={pressed ? "default" : "outline"} className="h-12" aria-pressed={pressed} onClick={onPick}>
       {label}
-    </button>
-  );
-}
-
-function Tender({
-  visit,
-  minutes,
-  method,
-  playDue,
-  phone,
-  name,
-  children,
-  disabled,
-  pad = false,
-}: {
-  visit: VisitView | null;
-  minutes: number;
-  method: "cash" | "bank_qr";
-  playDue: number;
-  phone: string;
-  name: string;
-  children: number;
-  disabled?: boolean;
-  pad?: boolean;
-}) {
-  const className = pad ? "tshong-till-pad-go" : "tshong-till-tender-go";
-  const label = (
-    <>
-      <span>Tender</span>
-      {pad ? <span className="text-[10px] uppercase">F10</span> : null}
-    </>
-  );
-  if (visit && playDue > 0) {
-    return (
-      <form action={payPlayAction} className="contents">
-        <input type="hidden" name="visitId" value={visit.id} />
-        <input type="hidden" name="code" value={visit.code} />
-        <input type="hidden" name="back" value="/desk" />
-        <input type="hidden" name="method" value={method} />
-        <button type="submit" className={className}>
-          {label}
-        </button>
-      </form>
-    );
-  }
-  if (!visit) {
-    return (
-      <form action={checkInAction} className="contents">
-        <input type="hidden" name="minutes" value={minutes} />
-        <input type="hidden" name="method" value={method} />
-        <input type="hidden" name="phone" value={phone} />
-        <input type="hidden" name="name" value={name} />
-        <input type="hidden" name="childCount" value={children} />
-        <button type="submit" className={className} disabled={disabled}>
-          {label}
-        </button>
-      </form>
-    );
-  }
-  return (
-    <button type="button" className={className} disabled>
-      {label}
-    </button>
+    </Button>
   );
 }

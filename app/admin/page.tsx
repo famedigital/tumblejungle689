@@ -22,9 +22,9 @@ export default async function AdminPage({
 }) {
   const session = await requireArea("admin");
   const query = await searchParams;
-  const settings = getSettings();
-  const pulse = floorPulse();
-  const staff = listStaff();
+  const settings = await getSettings();
+  const pulse = await floorPulse();
+  const staff = await listStaff();
   const panel = "space-y-4 rounded-3xl bg-card p-5 ring-1 ring-foreground/10";
 
   return (
