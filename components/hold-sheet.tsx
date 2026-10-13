@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { cancelHoldAction, leaveHoldAction, releaseHoldAction } from "@/app/actions";
 import { KotSlip } from "@/components/kot-slip";
+import { PrintPortal } from "@/components/print-portal";
 import { MiniRing, playSpanMinutes } from "@/components/live-timer";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -358,6 +359,7 @@ function OvertimeGate({
               </div>
             </form>
             {armed && fired.length > 0 ? (
+              <PrintPortal>
               <KotSlip
                 venue={venue}
                 tableNo={visit.tableNo || "Counter"}
@@ -374,6 +376,7 @@ function OvertimeGate({
                   note: "Cancel",
                 }))}
               />
+              </PrintPortal>
             ) : null}
           </div>
         ) : null}

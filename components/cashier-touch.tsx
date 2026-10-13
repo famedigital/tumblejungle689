@@ -6,6 +6,7 @@ import { logoutAction } from "@/app/actions";
 import { BankPick } from "@/components/bank-pick";
 import { Receipt } from "@/components/receipt";
 import { PassCard } from "@/components/pass-card";
+import { PrintPortal } from "@/components/print-portal";
 import { HoldSheet } from "@/components/hold-sheet";
 import { KotSlip } from "@/components/kot-slip";
 import { GlowTimer, MiniRing, playSpanMinutes } from "@/components/live-timer";
@@ -981,6 +982,7 @@ export function CashierTouch({
           )}
         </div>
         {showPack && visit && qr ? (
+          <PrintPortal>
           <div className="cash-print-source">
             <div className="print-sticker-sheet">
               {Array.from({ length: Math.max(1, visit.childCount) }, (_, index) => (
@@ -995,6 +997,7 @@ export function CashierTouch({
               ))}
             </div>
           </div>
+          </PrintPortal>
         ) : null}
         <footer className="tshong-till-keys">
           {openVisit
@@ -1241,6 +1244,7 @@ export function CashierTouch({
           </div>
         ) : null}
       {ticket && openVisit ? (
+        <PrintPortal>
         <KotSlip
           venue={venueName}
           tableNo={ticket.tableNo}
@@ -1252,8 +1256,10 @@ export function CashierTouch({
           ticket={ticket.kind}
           lines={ticket.lines}
         />
+        </PrintPortal>
       ) : null}
       {receiptLines.length > 0 ? (
+        <PrintPortal>
         <Receipt
           venue={venueName}
           address={venueAddress}
@@ -1268,6 +1274,7 @@ export function CashierTouch({
           thanks={receiptThanks}
           rules={receiptRules.split(/\r?\n/)}
         />
+        </PrintPortal>
       ) : null}
     </TillShell>
   );
@@ -1479,6 +1486,7 @@ function LineVoid({
               Void
             </Button>
             {armed ? (
+              <PrintPortal>
               <KotSlip
                 venue={venueName}
                 tableNo={visit.tableNo || "Counter"}
@@ -1491,6 +1499,7 @@ function LineVoid({
                 ticket={line.outlet === "cafe" ? "bot" : "kot"}
                 lines={[{ name: line.name, qty: cancelQty, outlet: line.outlet, note: "Cancel" }]}
               />
+              </PrintPortal>
             ) : null}
           </form>
         ) : null}

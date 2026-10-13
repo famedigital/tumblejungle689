@@ -82,9 +82,16 @@ export function useTillBook(query?: string) {
           savedAt: new Date().toISOString(),
         };
         const nextOutbox = bookRef.current.outbox.filter((op) => !appliedIds.has(op.id));
-        await remember({ base: nextBase, outbox: nextOutbox });
+        const removed = batch.filter((op) => appliedIds.has(op.id)).length;
+        try {
+          await remember({ base: nextBase, outbox: nextOutbox });
+        } catch {
+          stalled = true;
+          setNote("On this till");
+          break;
+        }
         if (body.error) setError(body.error);
-        if (body.retry || (!body.applied?.length && body.error)) {
+        if (body.retry || removed === 0) {
           stalled = true;
           break;
         }
@@ -154,7 +161,7 @@ export function useTillBook(query?: string) {
     };
   }, [flush]);
 
-  const visits = useMemo(() => applyOps(base.visits, outbox, base.menu, base.rates), [base, outbox]);
+  const visits = useMemo(() => foldOps(base.visits, outbox, base.menu, base.rates), [base, outbox]);
   const open = visits.filter((visit) => visit.status === "open");
   const selected = open.find((visit) => visit.code === selectedCode) ?? (focus?.code === selectedCode ? focus : null);
 
@@ -218,6 +225,18 @@ export function useTillBook(query?: string) {
     chooseBackup,
     restoreBackup,
   };
+}
+
+function foldOps(visits: VisitView[], ops: TillOp[], menu: TillBase["menu"], rates: TillBase["rates"]): VisitView[] {
+  let next = visits;
+  for (const op of ops) {
+    try {
+      next = applyOps(next, [op], menu, rates);
+    } catch {
+      break;
+    }
+  }
+  return next;
 }
 
 function upsertVisit(visits: VisitView[], visit: VisitView): VisitView[] {
