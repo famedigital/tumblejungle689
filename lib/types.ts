@@ -50,6 +50,7 @@ export type PlayBlock = {
 
 export type TabLine = {
   id: number;
+  lineKey?: string;
   name: string;
   qty: number;
   unitNu: number;
@@ -87,6 +88,7 @@ export type RecentTxn = {
 
 export type VisitView = {
   id: number;
+  clientKey?: string;
   code: string;
   phone: string;
   guardianName: string;

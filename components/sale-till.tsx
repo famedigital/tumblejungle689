@@ -310,7 +310,7 @@ export function SaleTill({
           <input type="hidden" name="outlet" value={outlet} />
         </TenderSheet>
       ) : null}
-      {holdsOpen ? <HoldSheet visits={open} now={now} currentId={openVisit?.id} desk={back} onClose={() => setHoldsOpen(false)} /> : null}
+      {holdsOpen ? <HoldSheet visits={open} now={now} currentId={openVisit?.id} desk={back} staff={staffName} onClose={() => setHoldsOpen(false)} /> : null}
     </TillShell>
   );
 }

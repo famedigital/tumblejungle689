@@ -2,6 +2,12 @@ export function formatNu(amount: number): string {
   return `Nu ${amount.toLocaleString("en-IN")}`;
 }
 
+export function tableLabel(tableNo: string): string {
+  const table = tableNo.trim().replace(/^table\s+/i, "");
+  if (!table || table.toLowerCase() === "standing") return "Standing";
+  return `Table ${table}`;
+}
+
 export function formatWhen(iso: string): string {
   return new Intl.DateTimeFormat("en-GB", {
     timeZone: "Asia/Thimphu",
@@ -10,6 +16,23 @@ export function formatWhen(iso: string): string {
     day: "numeric",
     month: "short",
   }).format(new Date(iso));
+}
+
+export function formatOrderStamp(iso: string): { date: string; clock: string } {
+  const when = new Date(iso);
+  return {
+    date: new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Thimphu",
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    }).format(when),
+    clock: new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Thimphu",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(when),
+  };
 }
 
 export function minutesLeft(paidUntil: string, now = Date.now()): number {

@@ -1,16 +1,15 @@
 ﻿"use client";
 
-import { useFormStatus } from "react-dom";
-import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { addChildrenAction, addItemAction, addPlayAction, checkInAction, logoutAction, qtyAction, removeLineAction, removePlayAction, saveKotAction, settleAction, voidLineAction } from "@/app/actions";
+import { logoutAction } from "@/app/actions";
 import { BankPick } from "@/components/bank-pick";
 import { Receipt } from "@/components/receipt";
 import { PassCard } from "@/components/pass-card";
 import { HoldSheet } from "@/components/hold-sheet";
 import { KotSlip } from "@/components/kot-slip";
-import { GlowTimer, playSpanMinutes } from "@/components/live-timer";
+import { GlowTimer, MiniRing, playSpanMinutes } from "@/components/live-timer";
+import { TimeUpSheet } from "@/components/timeup-sheet";
 import { RecentSheet } from "@/components/recent-sheet";
 import { Scanner } from "@/components/scanner";
 import { TenderSheet, type TenderMethod } from "@/components/tender-sheet";
@@ -22,15 +21,18 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PayQr } from "@/components/pay-qr";
-import { formatNu, formatPhone, formatWhen, minutesLeft } from "@/lib/format";
+import { formatNu, formatPhone, formatWhen, minutesLeft, tableLabel } from "@/lib/format";
 import { bankFromJournal } from "@/lib/pay-banks";
 import { submitOpenTender, useTillHotkeys } from "@/lib/hotkeys";
-import { buildDynamicEmv } from "@/lib/emv";
+import { buildDynamicEmv, staticFromSettings } from "@/lib/emv";
 import { overtimeSentence, quoteOvertime } from "@/lib/overtime";
 import { isPoleHello, polePost, POLE_CHANNEL, type PoleLine, type PolePayload } from "@/lib/pole";
+import { readSentSnapshot, rememberChat, sentIdsFrom, subscribeSent, emptySentSnapshot, whatsAppChat } from "@/lib/whatsapp";
+import { lineKeyOf, localCode, visitKey, type TillOp } from "@/lib/till-op";
+import { useTillBook } from "@/lib/use-till-book";
 import type { MenuItem, Outlet, Rate, RecentTxn, VisitView } from "@/lib/types";
 
-type KotLine = { id: number; name: string; qty: number; outlet: Outlet; note: string };
+type KotLine = { id: number; lineKey: string; name: string; qty: number; outlet: Outlet; note: string };
 type Ticket = { id: number; kind: "bot" | "kot"; tableNo: string; when: string; lines: KotLine[] };
 type CheckStep = "phone" | "children" | "pay" | "journal" | "adding";
 type CheckDraft = {
@@ -49,33 +51,6 @@ function freshCheck(): CheckDraft {
   return { step: "phone", phone: "", children: "1", method: "cash", journal: "", bank: "" };
 }
 
-function whatsAppChat(phone: string, venue: string, left: number): string {
-  const digits = phone.replace(/\D/g, "").slice(-8);
-  const text =
-    left < 0
-      ? `Play time at ${venue} has ended. Please come to the desk.`
-      : `Play time at ${venue} is ending. About ${Math.max(0, left)} minute${left === 1 ? "" : "s"} left.`;
-  return `https://wa.me/975${digits}?text=${encodeURIComponent(text)}`;
-}
-
-function sessionHasChat(id: number): boolean {
-  try {
-    return (sessionStorage.getItem("tumble-wa") ?? "").split(",").includes(String(id));
-  } catch {
-    return false;
-  }
-}
-
-function rememberChat(id: number) {
-  try {
-    const ids = new Set((sessionStorage.getItem("tumble-wa") ?? "").split(",").filter(Boolean));
-    ids.add(String(id));
-    sessionStorage.setItem("tumble-wa", [...ids].join(","));
-  } catch {
-    /* the row link still works */
-  }
-}
-
 function unsentFood(visit: VisitView): KotLine[] {
   return visit.lines.flatMap((line) => {
     const delta = line.qty - line.firedQty;
@@ -83,6 +58,7 @@ function unsentFood(visit: VisitView): KotLine[] {
     return [
       {
         id: line.id,
+        lineKey: lineKeyOf(line),
         name: line.name,
         qty: Math.abs(delta),
         outlet: line.outlet,
@@ -117,27 +93,9 @@ let alarmCtx: AudioContext | null = null;
 
 export function CashierTouch({
   staffName,
-  rates,
-  menu,
-  staticPayload,
-  visit,
-  open,
-  recent,
-  todayNu,
-  playNu,
-  foodNu,
-  error,
+  error: pageError,
   ok,
   query,
-  qr,
-  ticketUrl,
-  venueName,
-  bankAccount = "",
-  journalScan = false,
-  venueAddress,
-  receiptNote,
-  receiptThanks,
-  receiptRules,
   printTicket = false,
   printReceipt = false,
   printPack = false,
@@ -145,33 +103,42 @@ export function CashierTouch({
   startNew = false,
 }: {
   staffName: string;
-  rates: Rate[];
-  menu: MenuItem[];
-  staticPayload: string;
-  visit: VisitView | null;
-  open: VisitView[];
-  recent: RecentTxn[];
-  todayNu: number;
-  playNu: number;
-  foodNu: number;
   error?: string;
   ok?: string;
   query?: string;
-  qr: string;
-  ticketUrl: string;
-  venueName: string;
-  bankAccount?: string;
-  journalScan?: boolean;
-  venueAddress: string;
-  receiptNote: string;
-  receiptThanks: string;
-  receiptRules: string;
   printTicket?: boolean;
   printReceipt?: boolean;
   printPack?: boolean;
   holdOpen?: boolean;
   startNew?: boolean;
 }) {
+  const book = useTillBook(query);
+  const rates = book.base.rates;
+  const menu = book.base.menu;
+  const open = book.open;
+  const recent = book.base.recent;
+  const todayNu = book.base.todayNu;
+  const playNu = book.base.playNu;
+  const foodNu = book.base.foodNu;
+  const visit = book.visit;
+  const venueName = book.base.venueName;
+  const bankAccount = book.base.bankAccount;
+  const journalScan = book.base.journalScan;
+  const venueAddress = book.base.address;
+  const receiptNote = book.base.receiptNote;
+  const receiptThanks = book.base.receiptThanks;
+  const receiptRules = book.base.receiptRules;
+  const staticPayload = staticFromSettings({
+    payload: book.base.bankPayload,
+    account: book.base.bankAccount,
+    payee: book.base.payee,
+    city: book.base.city,
+  });
+  const [qr, setQr] = useState("");
+  const [ticketUrl, setTicketUrl] = useState("");
+  const [localPack, setLocalPack] = useState(false);
+  const showPack = printPack || localPack;
+  const error = book.error || pageError;
   const [cam, setCam] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [peopleOpen, setPeopleOpen] = useState(holdOpen);
@@ -198,12 +165,13 @@ export function CashierTouch({
   const saleRef = useRef<() => void>(() => {});
   const checkForm = useRef<HTMLFormElement>(null);
   const checkField = useRef<HTMLInputElement>(null);
-  const offeredChat = useRef(new Set<number>());
+  const [timeUpOpen, setTimeUpOpen] = useState(false);
+  const sentSnapshot = useSyncExternalStore(subscribeSent, readSentSnapshot, emptySentSnapshot);
+  const sentIds = sentIdsFrom(sentSnapshot);
   const [check, setCheck] = useState<CheckDraft | null>(startNew ? freshCheck() : null);
   const [sendCheck, setSendCheck] = useState(false);
   const [boardAt, setBoardAt] = useState(0);
   const [tab, setTab] = useState("playing");
-  const router = useRouter();
   const playRate = rates.find((rate) => rate.minutes === 30) ?? rates[0] ?? null;
   const ranked = open
     .map((item) => {
@@ -222,10 +190,11 @@ export function CashierTouch({
     ? openVisit.dueNu - (openVisit.overtime?.amountNu ?? 0) + (overtime?.amountNu ?? 0)
     : (visit?.dueNu ?? 0);
   const childrenIn = open.reduce((sum, item) => sum + (item.childCount > 0 || item.blocks.length > 0 ? item.childCount : 0), 0);
-  const overdue = ranked.filter((row) => !row.walkIn && row.left < 0).length;
+  const timeUp = ranked.filter((row) => !row.walkIn && row.left < 0).sort((a, b) => b.left - a.left);
+  const overdue = timeUp.length;
   const ending = ranked.filter((row) => !row.walkIn && row.left >= 0 && row.left <= 5).length;
   const lookup = (query ?? "").trim();
-  const status = error || ok || (check ? "Enter moves on. Escape cancels." : openVisit ? `${walkIn ? "Walk-in" : formatPhone(openVisit.phone)} is on this till` : lookup ? `No open play card for ${lookup}` : "Alt+N starts a new family. Alt+L opens the menu.");
+  const status = error || ok || (check ? "Enter moves on. Escape cancels." : openVisit ? `${walkIn ? tableLabel(openVisit.tableNo) : formatPhone(openVisit.phone)} is on this till` : lookup ? `No open play card for ${lookup}` : "Alt+N starts a new family. Alt+L opens the menu.");
   const extra = overtime ? overtimeSentence(overtime) : "";
   const poleRef = useRef<PolePayload | null>(null);
 
@@ -296,6 +265,34 @@ export function CashierTouch({
     return () => window.clearInterval(timer);
   }, []);
 
+  const markChat = useCallback((id: number) => {
+    rememberChat(id);
+  }, []);
+
+  useEffect(() => {
+    if (!visit?.code) {
+      setQr("");
+      setTicketUrl("");
+      return;
+    }
+    const url = `${window.location.origin}/t/${visit.code}`;
+    setTicketUrl(url);
+    let cancel = false;
+    void import("qrcode").then((mod) =>
+      mod.toDataURL(url, {
+        margin: 1,
+        width: 360,
+        errorCorrectionLevel: "M",
+        color: { dark: "#1f4d3a", light: "#ffffff" },
+      }),
+    ).then((data) => {
+      if (!cancel) setQr(data);
+    });
+    return () => {
+      cancel = true;
+    };
+  }, [visit?.code]);
+
   const lineCount = openVisit?.lines.reduce((sum, line) => sum + line.qty, 0) ?? 0;
   useEffect(() => {
     if (openVisit && (walkIn || openVisit.lines.length > 0)) setTab(openVisit.code);
@@ -313,6 +310,7 @@ export function CashierTouch({
     if (letter === "h") {
       setMenuOpen(false);
       setRecentOpen(false);
+      setTimeUpOpen(false);
       setPeopleOpen((open) => !open);
       return;
     }
@@ -331,6 +329,7 @@ export function CashierTouch({
         event.preventDefault();
         setMenuOpen(false);
         setRecentOpen(false);
+        setTimeUpOpen(false);
         setPeopleOpen((open) => !open);
         return;
       }
@@ -362,37 +361,39 @@ export function CashierTouch({
       }
       if (event.key === "Escape") {
         if (check) setCheck(null);
+        else if (timeUpOpen) setTimeUpOpen(false);
         else if (peopleOpen) setPeopleOpen(false);
         else if (askTable) setAskTable(false);
         else if (tender) setTender(null);
         else setMenuOpen(false);
       }
       const typing = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
-      if (!typing && !check && !menuOpen && !recentOpen && !peopleOpen && !askTable && !tender && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+      if (!typing && !check && !menuOpen && !recentOpen && !peopleOpen && !timeUpOpen && !askTable && !tender && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
         const order = ["playing", ...tickets.map((item) => item.code)];
         const index = Math.max(0, order.indexOf(tab));
         const step = event.key === "ArrowRight" ? 1 : -1;
         const next = order[(index + step + order.length) % order.length] ?? "playing";
         event.preventDefault();
         setTab(next);
-        if (next !== "playing") router.push(`/cashier?q=${next}`);
+        if (next !== "playing") book.openBill(next);
         return;
       }
-      if (!typing && !check && !menuOpen && !recentOpen && !peopleOpen && !askTable && !tender && tab === "playing" && ranked.length) {
+      if (!typing && !check && !menuOpen && !recentOpen && !peopleOpen && !timeUpOpen && !askTable && !tender && tab === "playing" && ranked.length) {
         if (event.key === "ArrowDown" || event.key === "ArrowUp") {
           event.preventDefault();
           const current = openVisit ? ranked.findIndex((row) => row.item.id === openVisit.id) : boardAt;
           const delta = event.key === "ArrowDown" ? 1 : -1;
           const next = (Math.max(0, current) + delta + ranked.length) % ranked.length;
           setBoardAt(next);
-          router.push(`/cashier?q=${ranked[next].item.code}`);
+          book.openBill(ranked[next].item.code);
           return;
         }
         if (event.key.toLowerCase() === "w") {
           const current = openVisit ? ranked.find((row) => row.item.id === openVisit.id) : ranked[Math.min(boardAt, ranked.length - 1)];
-          if (current && current.left <= 5) {
+          if (current && !current.walkIn && current.left < 0) {
             event.preventDefault();
-            window.open(whatsAppChat(current.item.phone, venueName, current.left), "_blank", "noopener");
+            markChat(current.item.id);
+            window.open(whatsAppChat(current.item.phone, venueName, Math.abs(current.left)), "_blank", "noopener");
           }
         }
       }
@@ -407,7 +408,7 @@ export function CashierTouch({
       window.removeEventListener("keydown", onKey, true);
       window.removeEventListener("keyup", onKey, true);
     };
-  }, [tender, openVisit, recentOpen, recent, recentIndex, peopleOpen, askTable, check, menuOpen, ranked, boardAt, router, venueName, tab, tickets]);
+  }, [tender, openVisit, recentOpen, recent, recentIndex, peopleOpen, timeUpOpen, askTable, check, menuOpen, ranked, boardAt, venueName, tab, tickets, book, markChat]);
 
   useEffect(() => {
     if (!printTicket || !qr) return;
@@ -472,7 +473,7 @@ export function CashierTouch({
       if (due > 0) openTender();
       return;
     }
-    const when = formatWhen(new Date().toISOString());
+    const when = new Date().toISOString();
     const jobs: Ticket[] = [];
     const bot = fresh.filter((line) => line.outlet === "cafe");
     const kot = fresh.filter((line) => line.outlet === "restaurant");
@@ -484,7 +485,14 @@ export function CashierTouch({
       ticketSeq.current += 1;
       jobs.push({ id: ticketSeq.current, kind: "kot", tableNo: table, when, lines: kot });
     }
-    void saveKotAction(openVisit.id, table, fresh.map((line) => line.id)).then(() => router.refresh());
+    void book.commit({
+      id: crypto.randomUUID(),
+      at: new Date().toISOString(),
+      kind: "saveKot",
+      visitKey: visitKey(openVisit),
+      tableNo: table,
+      lineKeys: fresh.map((line) => line.lineKey),
+    });
     restTickets.current = jobs.slice(1);
     setTicket(jobs[0] ?? null);
     if (!jobs[0] && due > 0) openTender();
@@ -618,7 +626,7 @@ export function CashierTouch({
   }, [check, open]);
 
   useEffect(() => {
-    if (!printPack || !qr) return;
+    if (!showPack || !qr) return;
     let stage: "sticker" | "receipt" | "done" = "sticker";
     const timer = window.setTimeout(() => {
       document.body.dataset.print = "sticker";
@@ -642,17 +650,7 @@ export function CashierTouch({
       window.clearTimeout(timer);
       window.removeEventListener("afterprint", done);
     };
-  }, [printPack, qr]);
-
-  const soonestId = ranked.find((row) => row.left <= 5)?.item.id ?? 0;
-  useEffect(() => {
-    if (!soonestId || offeredChat.current.has(soonestId) || sessionHasChat(soonestId)) return;
-    const row = ranked.find((item) => item.item.id === soonestId);
-    if (!row) return;
-    offeredChat.current.add(soonestId);
-    rememberChat(soonestId);
-    window.open(whatsAppChat(row.item.phone, venueName, row.left), "_blank", "noopener");
-  }, [soonestId, venueName, ranked]);
+  }, [showPack, qr]);
 
   useEffect(() => {
     if (!ticket) return;
@@ -735,12 +733,28 @@ export function CashierTouch({
             onClick={() => {
               setMenuOpen(false);
               setRecentOpen(false);
+              setTimeUpOpen(false);
               setPeopleOpen(true);
             }}
           >
             <b>{childrenIn}</b>
             <span>In play</span>
             {overdue > 0 ? <small>{overdue} overtime</small> : ending > 0 ? <small>{ending} ending</small> : <small>Alt+H</small>}
+          </button>
+          <button
+            type="button"
+            className="hold-chip"
+            data-alarm={overdue > 0 ? "over" : "ok"}
+            aria-pressed={timeUpOpen}
+            onClick={() => {
+              setMenuOpen(false);
+              setRecentOpen(false);
+              setPeopleOpen(false);
+              setTimeUpOpen(true);
+            }}
+          >
+            <b>{overdue}</b>
+            <span>Time&apos;s up</span>
           </button>
           {overdue > 0 && !quiet ? (
             <Button type="button" variant="outline" className="h-11" onClick={() => setQuiet(true)}>
@@ -750,7 +764,14 @@ export function CashierTouch({
           <p className="text-xs text-muted-foreground">
             <b className="text-foreground">{formatNu(todayNu)}</b> today · <b className="text-foreground">{formatNu(playNu)}</b> play ·{" "}
             <b className="text-foreground">{formatNu(foodNu)}</b> food
+            <span className="ml-2">{book.pending > 0 ? "On this till" : book.ready ? "Saved" : "Opening the till"}</span>
           </p>
+          <Button type="button" variant="outline" className="h-11" onClick={() => void book.chooseBackup()}>
+            {book.backupOn ? "Backup on" : "Backup"}
+          </Button>
+          <Button type="button" variant="outline" className="h-11" onClick={() => void book.restoreBackup()}>
+            Restore
+          </Button>
           <Button type="button" variant={cam ? "secondary" : "outline"} className="h-11" aria-pressed={cam} onClick={() => setCam((value) => !value)}>
             Camera
           </Button>
@@ -789,9 +810,9 @@ export function CashierTouch({
                   <TabsTrigger
                     key={item.id}
                     value={item.code}
-                    onClick={() => router.push(`/cashier?q=${item.code}`)}
+                    onClick={() => book.openBill(item.code)}
                   >
-                    {item.childCount === 0 && item.blocks.length === 0 ? "Walk-in" : formatPhone(item.phone)}
+                    {item.childCount === 0 && item.blocks.length === 0 ? tableLabel(item.tableNo) : formatPhone(item.phone)}
                     <Badge variant={item.lines.some((line) => !line.paid) ? "default" : "secondary"}>
                       {item.lines.reduce((sum, line) => sum + line.qty, 0) || item.childCount}
                     </Badge>
@@ -812,16 +833,16 @@ export function CashierTouch({
                               onClick={() => {
                                 setBoardAt(index);
                                 setTab(row.item.lines.length > 0 || row.walkIn ? row.item.code : "playing");
-                                router.push(`/cashier?q=${row.item.code}`);
+                                book.openBill(row.item.code);
                               }}
                             >
-                              <b>{row.walkIn ? "Walk-in" : formatPhone(row.item.phone)}</b>
+                              <b>{row.walkIn ? tableLabel(row.item.tableNo) : formatPhone(row.item.phone)}</b>
                               <em className="tabular-nums">
-                                {row.walkIn
-                                  ? formatNu(row.item.dueNu)
-                                  : row.left < 0
-                                    ? `${Math.abs(row.left)} min over`
-                                    : `${row.left} min`}
+                                {row.walkIn ? (
+                                  formatNu(row.item.dueNu)
+                                ) : (
+                                  <MiniRing end={row.item.paidUntil} spanMin={playSpanMinutes(row.item.blocks)} />
+                                )}
                               </em>
                               <small>
                                 {row.walkIn
@@ -829,9 +850,16 @@ export function CashierTouch({
                                   : `${row.item.childCount} ${row.item.childCount === 1 ? "child" : "children"}${time === "ending" ? " · ending" : time === "over" ? " · overtime" : ""}`}
                               </small>
                             </button>
-                            {!row.walkIn && row.left <= 5 ? (
-                              <a className="play-wa" href={whatsAppChat(row.item.phone, venueName, row.left)} target="_blank" rel="noreferrer">
-                                WhatsApp · W
+                            {!row.walkIn && row.left < 0 ? (
+                              <a
+                                className="play-wa"
+                                data-sent={sentIds.includes(row.item.id) ? "1" : "0"}
+                                href={whatsAppChat(row.item.phone, venueName, Math.abs(row.left))}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={() => markChat(row.item.id)}
+                              >
+                                {sentIds.includes(row.item.id) ? "Sent · WhatsApp" : "WhatsApp · W"}
                               </a>
                             ) : null}
                           </div>
@@ -845,7 +873,42 @@ export function CashierTouch({
               </TabsContent>
               {tickets.map((item) => (
                 <TabsContent key={item.id} value={item.code} className="min-h-0 overflow-auto">
-                  <BillTab visit={item} active={tab === item.code} venueName={venueName} qr={qr} />
+                  <BillTab
+                    visit={item}
+                    active={tab === item.code}
+                    venueName={venueName}
+                    staffName={staffName}
+                    onQty={(line, delta) =>
+                      book.commit({
+                        id: crypto.randomUUID(),
+                        at: new Date().toISOString(),
+                        kind: "qty",
+                        visitKey: visitKey(item),
+                        lineKey: lineKeyOf(line),
+                        delta,
+                      })
+                    }
+                    onDrop={(line) =>
+                      book.commit({
+                        id: crypto.randomUUID(),
+                        at: new Date().toISOString(),
+                        kind: "removeLine",
+                        visitKey: visitKey(item),
+                        lineKey: lineKeyOf(line),
+                      })
+                    }
+                    onVoid={(line, next, secret) =>
+                      book.commit({
+                        id: crypto.randomUUID(),
+                        at: new Date().toISOString(),
+                        kind: "voidLine",
+                        visitKey: visitKey(item),
+                        lineKey: lineKeyOf(line),
+                        nextQty: next,
+                        secret,
+                      })
+                    }
+                  />
                 </TabsContent>
               ))}
             </Tabs>
@@ -859,6 +922,42 @@ export function CashierTouch({
               fieldRef={checkField}
               formRef={checkForm}
               onChange={setCheck}
+              onCheckIn={(draft) => {
+                const code = localCode();
+                const saved = book.commit({
+                  id: crypto.randomUUID(),
+                  at: new Date().toISOString(),
+                  kind: "checkIn",
+                  visitKey: crypto.randomUUID(),
+                  code,
+                  phone: draft.phone,
+                  name: "",
+                  childCount: Math.max(1, Number(draft.children) || 1),
+                  minutes: playRate.minutes,
+                  method: draft.method,
+                  journal: draft.journal,
+                  payBank: draft.bank || bankFromJournal(draft.journal),
+                });
+                if (!saved) return;
+                setCheck(null);
+                setLocalPack(true);
+                book.openBill(code);
+              }}
+              onAdd={(draft) => {
+                const match = open.find((item) => item.id === draft.addToId);
+                if (!match) return;
+                const saved = book.commit({
+                  id: crypto.randomUUID(),
+                  at: new Date().toISOString(),
+                  kind: "addChildren",
+                  visitKey: visitKey(match),
+                  childCount: Math.max(1, Number(draft.children) || 1),
+                });
+                if (!saved) return;
+                setCheck(null);
+                setLocalPack(true);
+                book.openBill(match.code);
+              }}
             />
           ) : openVisit ? (
             <PayRail
@@ -881,7 +980,7 @@ export function CashierTouch({
             <ChildSheet venueName={venueName} visit={ranked[Math.min(boardAt, Math.max(0, ranked.length - 1))]?.item ?? null} />
           )}
         </div>
-        {printPack && visit && qr ? (
+        {showPack && visit && qr ? (
           <div className="cash-print-source">
             <div className="print-sticker-sheet">
               {Array.from({ length: Math.max(1, visit.childCount) }, (_, index) => (
@@ -900,28 +999,41 @@ export function CashierTouch({
         <footer className="tshong-till-keys">
           {openVisit
             ? rates.map((rate) => (
-                <form key={rate.minutes} action={addPlayAction} className="contents">
-                  <input type="hidden" name="visitId" value={openVisit.id} />
-                  <input type="hidden" name="code" value={openVisit.code} />
-                  <input type="hidden" name="back" value="/cashier" />
-                  <input type="hidden" name="minutes" value={rate.minutes} />
-                  <Go className="tshong-fkey">
-                    <small>+{rate.minutes}</small>
-                    <span>{formatNu(rate.amountNu)}</span>
-                  </Go>
-                </form>
+                <button
+                  key={rate.minutes}
+                  type="button"
+                  className="tshong-fkey"
+                  onClick={() =>
+                    book.commit({
+                      id: crypto.randomUUID(),
+                      at: new Date().toISOString(),
+                      kind: "addPlay",
+                      visitKey: visitKey(openVisit),
+                      minutes: rate.minutes,
+                    })
+                  }
+                >
+                  <small>+{rate.minutes}</small>
+                  <span>{formatNu(rate.amountNu)}</span>
+                </button>
               ))
             : null}
           {openVisit && openVisit.blocks.some((block) => !block.paid) ? (
-            <form action={removePlayAction} className="contents">
-              <input type="hidden" name="visitId" value={openVisit.id} />
-              <input type="hidden" name="code" value={openVisit.code} />
-              <input type="hidden" name="back" value="/cashier" />
-              <Go className="tshong-fkey">
-                <small>Undo</small>
-                <span>Play</span>
-              </Go>
-            </form>
+            <button
+              type="button"
+              className="tshong-fkey"
+              onClick={() =>
+                book.commit({
+                  id: crypto.randomUUID(),
+                  at: new Date().toISOString(),
+                  kind: "removePlay",
+                  visitKey: visitKey(openVisit),
+                })
+              }
+            >
+              <small>Undo</small>
+              <span>Play</span>
+            </button>
           ) : null}
           <button type="button" className="tshong-fkey" onClick={beginCheckIn}>
             <small>Alt+N</small>
@@ -934,6 +1046,7 @@ export function CashierTouch({
             onClick={() => {
               setMenuOpen(false);
               setRecentOpen(false);
+              setTimeUpOpen(false);
               setPeopleOpen((open) => !open);
             }}
           >
@@ -971,7 +1084,49 @@ export function CashierTouch({
             <span>Menu</span>
           </button>
         </footer>
-        {peopleOpen ? <HoldSheet visits={open} now={now} currentId={openVisit?.id} venue={venueName} onClose={() => setPeopleOpen(false)} /> : null}
+        {peopleOpen ? (
+          <HoldSheet
+            visits={open}
+            now={now}
+            currentId={openVisit?.id}
+            venue={venueName}
+            staff={staffName}
+            onClose={() => setPeopleOpen(false)}
+            onOpen={(item) => {
+              book.openBill(item.code);
+              setTab(item.childCount === 0 || item.lines.length > 0 ? item.code : "playing");
+              setPeopleOpen(false);
+            }}
+            onLeave={(item) =>
+              book.commit({ id: crypto.randomUUID(), at: new Date().toISOString(), kind: "leave", visitKey: visitKey(item) })
+            }
+            onCancel={(item) =>
+              book.commit({ id: crypto.randomUUID(), at: new Date().toISOString(), kind: "cancel", visitKey: visitKey(item) })
+            }
+            onRelease={(item, choice, secret) =>
+              book.commit({
+                id: crypto.randomUUID(),
+                at: new Date().toISOString(),
+                kind: choice === "waive" ? "waive" : "voidVisit",
+                visitKey: visitKey(item),
+                secret,
+              })
+            }
+          />
+        ) : null}
+        {timeUpOpen ? (
+          <TimeUpSheet
+            rows={timeUp}
+            venue={venueName}
+            sentIds={sentIds}
+            onSent={markChat}
+            onOpen={(code) => {
+              book.openBill(code);
+              setTimeUpOpen(false);
+            }}
+            onClose={() => setTimeUpOpen(false)}
+          />
+        ) : null}
         {recentOpen ? (
           <RecentSheet
             recent={recent}
@@ -984,11 +1139,47 @@ export function CashierTouch({
           />
         ) : null}
         {menuOpen ? (
-          <MenuSheet menu={menu} visit={openVisit} onClose={() => setMenuOpen(false)} />
+          <MenuSheet
+            menu={menu}
+            onClose={() => setMenuOpen(false)}
+            onAdd={(item) => {
+              const key = openVisit ? visitKey(openVisit) : crypto.randomUUID();
+              const code = openVisit ? openVisit.code : localCode();
+              const saved = book.commit({
+                id: crypto.randomUUID(),
+                at: new Date().toISOString(),
+                kind: "addItem",
+                visitKey: key,
+                lineKey: crypto.randomUUID(),
+                itemId: item.id,
+                outlet: item.outlet,
+                code,
+              });
+              if (!saved || openVisit) return;
+              book.openBill(code);
+              setTab(code);
+            }}
+          />
         ) : null}
         {tender && (tender.kind === "checkin" || openVisit) ? (
           <TenderSheet
-            action={tender.kind === "checkin" ? checkInAction : settleAction}
+            action={(formData) => {
+              if (!openVisit) return;
+              const method = String(formData.get("method") ?? "bank_qr");
+              const pay = method === "cash" || method === "split" || method === "bank_qr" ? method : "bank_qr";
+              const saved = book.commit({
+                id: crypto.randomUUID(),
+                at: new Date().toISOString(),
+                kind: "settle",
+                visitKey: visitKey(openVisit),
+                method: pay,
+                journal: String(formData.get("journal") ?? ""),
+                payBank: String(formData.get("payBank") ?? ""),
+                cashNu: Number(formData.get("cashNu") ?? 0),
+                bankNu: Number(formData.get("bankNu") ?? 0),
+              });
+              if (saved) setTender(null);
+            }}
             method={tenderMethod}
             onMethod={setTenderMethod}
             onScan={setScanNu}
@@ -1055,8 +1246,8 @@ export function CashierTouch({
           tableNo={ticket.tableNo}
           phone={openVisit.phone}
           code={openVisit.code}
-          qr={qr}
-          when={ticket.when}
+          orderedAt={ticket.when}
+          staff={staffName}
           reprint={false}
           ticket={ticket.kind}
           lines={ticket.lines}
@@ -1082,7 +1273,23 @@ export function CashierTouch({
   );
 }
 
-function BillTab({ visit, active, venueName, qr }: { visit: VisitView; active: boolean; venueName: string; qr: string }) {
+function BillTab({
+  visit,
+  active,
+  venueName,
+  staffName,
+  onQty,
+  onDrop,
+  onVoid,
+}: {
+  visit: VisitView;
+  active: boolean;
+  venueName: string;
+  staffName: string;
+  onQty: (line: VisitView["lines"][number], delta: number) => void;
+  onDrop: (line: VisitView["lines"][number]) => void;
+  onVoid: (line: VisitView["lines"][number], next: number, secret: string) => void;
+}) {
   const rows = [
     ...visit.blocks.map((block) => ({
       key: `play-${block.id}`,
@@ -1125,19 +1332,19 @@ function BillTab({ visit, active, venueName, qr }: { visit: VisitView; active: b
       if (event.key === "Delete" || event.key === "Backspace") {
         event.preventDefault();
         if (line.firedQty > 0) setVoiding({ lineId: line.id, next: 0 });
-        else document.querySelector<HTMLFormElement>(`[data-drop-line="${line.id}"]`)?.requestSubmit();
+        else document.querySelector<HTMLButtonElement>(`[data-drop-line="${line.id}"]`)?.click();
       } else if (event.key === "-" || event.key === "Subtract") {
         event.preventDefault();
         if (line.qty - 1 < line.firedQty) setVoiding({ lineId: line.id, next: Math.max(0, line.qty - 1) });
-        else document.querySelector<HTMLFormElement>(`[data-qty-line="${line.id}"][data-delta="-1"]`)?.requestSubmit();
+        else onQty(line, -1);
       } else if (event.key === "Enter" || event.key === "+" || event.key === "=" || event.key === "Add") {
         event.preventDefault();
-        document.querySelector<HTMLFormElement>(`[data-qty-line="${line.id}"][data-delta="1"]`)?.requestSubmit();
+        onQty(line, 1);
       }
     }
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [active, at, food, voiding]);
+  }, [active, at, food, voiding, onQty]);
   if (!rows.length) {
     return <p className="cash-hint">This bill is empty. Alt+L adds a dish.</p>;
   }
@@ -1170,23 +1377,17 @@ function BillTab({ visit, active, venueName, qr }: { visit: VisitView; active: b
                     −
                   </Button>
                 ) : (
-                  <LineQty visit={visit} lineId={row.line.id} outlet={row.line.outlet} delta={-1} label="−" />
+                  <LineQty lineId={row.line.id} delta={-1} label="−" onQty={() => onQty(row.line!, -1)} />
                 )}
-                <LineQty visit={visit} lineId={row.line.id} outlet={row.line.outlet} delta={1} label="+" />
+                <LineQty lineId={row.line.id} delta={1} label="+" onQty={() => onQty(row.line!, 1)} />
                 {row.line.firedQty > 0 ? (
                   <Button type="button" size="xs" variant="outline" onClick={() => setVoiding({ lineId: row.line!.id, next: 0 })}>
                     Delete
                   </Button>
                 ) : (
-                  <form action={removeLineAction} data-drop-line={row.line.id}>
-                    <input type="hidden" name="visitId" value={visit.id} />
-                    <input type="hidden" name="lineId" value={row.line.id} />
-                    <input type="hidden" name="code" value={visit.code} />
-                    <input type="hidden" name="back" value="/cashier" />
-                    <Button type="submit" size="xs" variant="outline">
-                      Delete
-                    </Button>
-                  </form>
+                  <Button type="button" size="xs" variant="outline" data-drop-line={row.line.id} onClick={() => onDrop(row.line!)}>
+                    Delete
+                  </Button>
                 )}
               </>
             ) : null}
@@ -1197,10 +1398,15 @@ function BillTab({ visit, active, venueName, qr }: { visit: VisitView; active: b
     <LineVoid
       visit={visit}
       venueName={venueName}
-      qr={qr}
+      staffName={staffName}
       line={visit.lines.find((line) => line.id === voiding?.lineId) ?? null}
       next={voiding?.next ?? 0}
       onClose={() => setVoiding(null)}
+      onVoid={(secret) => {
+        const line = visit.lines.find((item) => item.id === voiding?.lineId);
+        if (line) onVoid(line, voiding?.next ?? 0, secret);
+        setVoiding(null);
+      }}
     />
     </>
   );
@@ -1209,20 +1415,23 @@ function BillTab({ visit, active, venueName, qr }: { visit: VisitView; active: b
 function LineVoid({
   visit,
   venueName,
-  qr,
+  staffName,
   line,
   next,
   onClose,
+  onVoid,
 }: {
   visit: VisitView;
   venueName: string;
-  qr: string;
+  staffName: string;
   line: VisitView["lines"][number] | null;
   next: number;
   onClose: () => void;
+  onVoid: (secret: string) => void;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [armed, setArmed] = useState(false);
+  const [stamp, setStamp] = useState("");
   const cancelQty = line ? Math.max(0, line.firedQty - next) : 0;
 
   useEffect(() => {
@@ -1250,23 +1459,21 @@ function LineVoid({
         {line ? (
           <form
             ref={formRef}
-            action={voidLineAction}
             className="grid gap-3"
             onSubmit={(event) => {
+              event.preventDefault();
               const pin = String(new FormData(event.currentTarget).get("secret") ?? "").trim();
-              if (cancelQty > 0 && !armed && pin) {
-                event.preventDefault();
+              if (!pin) return;
+              if (cancelQty > 0 && !armed) {
+                setStamp(new Date().toISOString());
                 setArmed(true);
+                return;
               }
+              onVoid(pin);
             }}
           >
-            <input type="hidden" name="visitId" value={visit.id} />
-            <input type="hidden" name="lineId" value={line.id} />
-            <input type="hidden" name="nextQty" value={next} />
-            <input type="hidden" name="code" value={visit.code} />
-            <input type="hidden" name="back" value="/cashier" />
             <Field label="Manager PIN">
-              <Input name="secret" type="password" inputMode="numeric" autoComplete="off" autoFocus />
+              <Input name="secret" type="text" inputMode="numeric" autoComplete="off" autoCapitalize="off" spellCheck={false} autoFocus className="till-secret" />
             </Field>
             <Button type="submit" variant="destructive">
               Void
@@ -1277,8 +1484,8 @@ function LineVoid({
                 tableNo={visit.tableNo || "Counter"}
                 phone={visit.phone}
                 code={visit.code}
-                qr={qr}
-                when={formatWhen(new Date().toISOString())}
+                orderedAt={stamp || new Date().toISOString()}
+                staff={staffName}
                 reprint={false}
                 cancel
                 ticket={line.outlet === "cafe" ? "bot" : "kot"}
@@ -1328,6 +1535,8 @@ function CheckInSheet({
   fieldRef,
   formRef,
   onChange,
+  onCheckIn,
+  onAdd,
 }: {
   venueName: string;
   draft: CheckDraft;
@@ -1336,8 +1545,9 @@ function CheckInSheet({
   fieldRef: RefObject<HTMLInputElement | null>;
   formRef: RefObject<HTMLFormElement | null>;
   onChange: (next: CheckDraft) => void;
+  onCheckIn: (draft: CheckDraft) => void;
+  onAdd: (draft: CheckDraft) => void;
 }) {
-  const count = Math.max(1, Number(draft.children) || 1);
   const amount = rate.amountNu;
   const adding = draft.step === "adding";
   const titles: Record<CheckStep, string> = {
@@ -1350,17 +1560,15 @@ function CheckInSheet({
 
   return (
     <aside className="tshong-till-rail cash-paper">
-      <form ref={formRef} action={adding ? addChildrenAction : checkInAction} className="cash-receipt">
-        <input type="hidden" name="back" value="/cashier" />
-        <input type="hidden" name="name" value="" />
-        <input type="hidden" name="phone" value={draft.phone} />
-        <input type="hidden" name="childCount" value={count} />
-        <input type="hidden" name="minutes" value={rate.minutes} />
-        <input type="hidden" name="method" value={draft.method} />
-        <input type="hidden" name="journal" value={draft.journal} />
-        <input type="hidden" name="payBank" value={draft.bank || bankFromJournal(draft.journal)} />
-        {adding ? <input type="hidden" name="visitId" value={draft.addToId ?? ""} /> : null}
-        {adding ? <input type="hidden" name="code" value={draft.addToCode ?? ""} /> : null}
+      <form
+        ref={formRef}
+        className="cash-receipt"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (adding) onAdd(draft);
+          else onCheckIn(draft);
+        }}
+      >
         <header className="cash-receipt-head">
           <strong>{venueName}</strong>
           <span>{adding ? "Add children" : "Check in"}</span>
@@ -1420,12 +1628,12 @@ function CheckInSheet({
 
 function MenuSheet({
   menu,
-  visit,
   onClose,
+  onAdd,
 }: {
   menu: MenuItem[];
-  visit: VisitView | null;
   onClose: () => void;
+  onAdd: (item: MenuItem) => void;
 }) {
   const [find, setFind] = useState("");
   const [at, setAt] = useState(0);
@@ -1484,20 +1692,13 @@ function MenuSheet({
             const picked = rows[Math.min(at, Math.max(rows.length - 1, 0))]?.id === item.id;
             return (
               <li key={item.id}>
-                <form action={addItemAction}>
-                  {visit ? <input type="hidden" name="visitId" value={visit.id} /> : null}
-                  {visit ? <input type="hidden" name="code" value={visit.code} /> : null}
-                  <input type="hidden" name="back" value="/cashier" />
-                  <input type="hidden" name="outlet" value={item.outlet} />
-                  <input type="hidden" name="itemId" value={item.id} />
-                  <button type="submit" data-menu-item={item.id} data-pick={picked ? "1" : "0"}>
+                <button type="button" data-menu-item={item.id} data-pick={picked ? "1" : "0"} onClick={() => onAdd(item)}>
                     <span>
                       {item.name}
                       <small>{item.category}</small>
                     </span>
                     <b>{formatNu(item.priceNu)}</b>
                   </button>
-                </form>
               </li>
             );
           })}
@@ -1556,7 +1757,7 @@ function PayRail({
           <span>{visit.code}</span>
         </header>
         <p className="cash-receipt-row">
-          <span>{visit.childCount === 0 && visit.blocks.length === 0 ? "Walk-in" : visit.guardianName || "Guest"}</span>
+          <span>{visit.childCount === 0 && visit.blocks.length === 0 ? tableLabel(visit.tableNo) : visit.guardianName || "Guest"}</span>
           <b>{visit.phone.length === 8 ? formatPhone(visit.phone) : visit.code}</b>
         </p>
         {visit.childCount > 0 || visit.blocks.length > 0 ? (
@@ -1564,10 +1765,8 @@ function PayRail({
             {visit.childCount} {visit.childCount === 1 ? "child" : "children"}
             {visit.tableNo ? ` · Table ${visit.tableNo}` : ""}
           </p>
-        ) : visit.tableNo ? (
-          <p className="cash-hint">Table {visit.tableNo}</p>
         ) : null}
-        {visit.blocks.length > 0 ? <GlowTimer end={visit.paidUntil} spanMin={playSpanMinutes(visit.blocks)} /> : null}
+        {visit.blocks.length > 0 ? <GlowTimer end={visit.paidUntil} spanMin={playSpanMinutes(visit.blocks)} until={formatWhen(visit.paidUntil)} /> : null}
         <hr className="cash-receipt-rule" />
         <p className="cash-receipt-row">
           <span>Lines</span>
@@ -1657,38 +1856,20 @@ function PayRail({
 }
 
 function LineQty({
-  visit,
   lineId,
-  outlet,
   delta,
   label,
+  onQty,
 }: {
-  visit: VisitView;
   lineId: number;
-  outlet: Outlet;
   delta: number;
   label: string;
+  onQty: () => void;
 }) {
   return (
-    <form action={qtyAction} data-qty-line={lineId} data-delta={delta}>
-      <input type="hidden" name="visitId" value={visit.id} />
-      <input type="hidden" name="lineId" value={lineId} />
-      <input type="hidden" name="code" value={visit.code} />
-      <input type="hidden" name="back" value="/cashier" />
-      <input type="hidden" name="outlet" value={outlet} />
-      <input type="hidden" name="delta" value={delta} />
-      <Button type="submit" size="icon-xs" variant="outline" aria-label={delta < 0 ? "Remove one" : "Add one"}>
-        {label}
-      </Button>
-    </form>
+    <Button type="button" size="icon-xs" variant="outline" aria-label={delta < 0 ? "Remove one" : "Add one"} data-qty-line={lineId} data-delta={delta} onClick={onQty}>
+      {label}
+    </Button>
   );
 }
 
-function Go({ className, children, disabled = false }: { className: string; children: ReactNode; disabled?: boolean }) {
-  const { pending } = useFormStatus();
-  return (
-    <button type="submit" className={className} disabled={pending || disabled}>
-      {pending ? "…" : children}
-    </button>
-  );
-}

@@ -104,9 +104,9 @@ export default async function AdminPage({
                         <p className="text-sm text-muted-foreground">{person.active ? "Active" : "Inactive"}</p>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <form action={setSecretAction} className="flex gap-2">
+                        <form action={setSecretAction} autoComplete="off" className="flex gap-2">
                           <input type="hidden" name="id" value={person.id} />
-                          <Input name="secret" type="password" placeholder="New PIN or password" className="h-11 w-44 bg-background" required minLength={4} />
+                          <Input name="secret" type="text" autoComplete="off" spellCheck={false} placeholder="New PIN or password" className="till-secret h-11 w-44 bg-background" required minLength={4} />
                           <Button type="submit" variant="outline" className="h-11">
                             Update
                           </Button>
@@ -122,7 +122,7 @@ export default async function AdminPage({
                     </li>
                   ))}
                 </ul>
-                <form action={addStaffAction} className="flex flex-wrap items-end gap-2">
+                <form action={addStaffAction} autoComplete="off" className="flex flex-wrap items-end gap-2">
                   <Field name="name" label="Name" />
                   <label className="space-y-1 text-sm">
                     <span>Role</span>
@@ -134,7 +134,7 @@ export default async function AdminPage({
                       <option value="admin">Admin</option>
                     </select>
                   </label>
-                  <Field name="secret" label="PIN or password" type="password" />
+                  <Field name="secret" label="PIN or password" className="till-secret" />
                   <Button type="submit" className="h-11">
                     Add staff
                   </Button>
@@ -153,18 +153,18 @@ function Field({
   label,
   defaultValue,
   placeholder,
-  type = "text",
+  className,
 }: {
   name: string;
   label: string;
   defaultValue?: string;
   placeholder?: string;
-  type?: string;
+  className?: string;
 }) {
   return (
     <label className="space-y-1 text-sm">
       <span>{label}</span>
-      <Input name={name} type={type} defaultValue={defaultValue} placeholder={placeholder} className="h-11" />
+      <Input name={name} type="text" autoComplete="off" defaultValue={defaultValue} placeholder={placeholder} className={`h-11 ${className ?? ""}`} />
     </label>
   );
 }

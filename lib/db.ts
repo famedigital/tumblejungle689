@@ -205,6 +205,26 @@ export async function ensureTillEvents(): Promise<void> {
   eventsReady = true;
 }
 
+let syncReady = false;
+
+export async function ensureTillSync(): Promise<void> {
+  if (syncReady) return;
+  await query().exec("ALTER TABLE visits ADD COLUMN IF NOT EXISTS client_key text");
+  await query().exec("ALTER TABLE tab_lines ADD COLUMN IF NOT EXISTS client_key text");
+  await query().exec(
+    `CREATE TABLE IF NOT EXISTS till_ops (
+      client_op_id text PRIMARY KEY,
+      applied_at timestamptz NOT NULL,
+      visit_id bigint,
+      result text NOT NULL DEFAULT ''
+    )`,
+  );
+  await query().exec(
+    "CREATE UNIQUE INDEX IF NOT EXISTS visits_client_key_uidx ON visits (client_key) WHERE client_key IS NOT NULL",
+  );
+  syncReady = true;
+}
+
 let journalReady = false;
 let journalTask: Promise<boolean> | null = null;
 

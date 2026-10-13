@@ -1,13 +1,19 @@
-import { formatPhone } from "@/lib/format";
+import { formatOrderStamp, formatPhone, tableLabel } from "@/lib/format";
 import type { Outlet } from "@/lib/types";
+
+function placeLabel(tableNo: string) {
+  const raw = tableNo.trim();
+  if (!raw || raw.toLowerCase() === "counter") return "Counter";
+  return tableLabel(raw);
+}
 
 export function KotSlip({
   venue,
   tableNo,
   phone,
   code,
-  qr,
-  when,
+  orderedAt,
+  staff = "",
   reprint,
   ticket = "kot",
   cancel = false,
@@ -17,34 +23,60 @@ export function KotSlip({
   tableNo: string;
   phone: string;
   code: string;
-  qr: string;
-  when: string;
+  orderedAt: string;
+  staff?: string;
   reprint: boolean;
   ticket?: "bot" | "kot";
   cancel?: boolean;
   lines: { name: string; qty: number; outlet: Outlet; note: string }[];
 }) {
-  const title = cancel ? "Cancel" : reprint ? "Reprint" : ticket === "bot" ? "Bar order" : "Kitchen order";
+  const stamp = formatOrderStamp(orderedAt);
+  const kind = ticket === "bot" ? "Bar order" : "Kitchen order";
+  const banner = cancel ? "Cancel" : reprint ? "Reprint" : kind;
+  const guest = formatPhone(phone);
+  const count = lines.reduce((sum, line) => sum + line.qty, 0);
 
   return (
-    <article className="print-kot">
-      <p className="kot-kicker">{title}</p>
+    <article className={`print-kot${cancel ? " kot-cancel" : ""}`}>
+      <p className="kot-kicker">{banner}</p>
+      {cancel || reprint ? <p className="kot-kind">{kind}</p> : null}
       <p className="kot-venue">{venue}</p>
-      <p className="kot-table">Table {tableNo}</p>
-      <p className="kot-who">{formatPhone(phone)}</p>
-      <p className="kot-who">Ticket {code}</p>
-      {qr ? <img src={qr} alt="" /> : null}
-      <p className="kot-when">{when}</p>
+      <p className="kot-table">{placeLabel(tableNo)}</p>
+      <p className="kot-clock">{stamp.clock}</p>
+      <p className="kot-when">Ordered {stamp.date}</p>
+      <dl className="kot-meta">
+        <div>
+          <dt>Ticket</dt>
+          <dd>{code}</dd>
+        </div>
+        {guest ? (
+          <div>
+            <dt>Phone</dt>
+            <dd>{guest}</dd>
+          </div>
+        ) : null}
+        {staff ? (
+          <div>
+            <dt>By</dt>
+            <dd>{staff}</dd>
+          </div>
+        ) : null}
+      </dl>
       <ul>
         {lines.map((line, index) => (
           <li key={`${line.name}-${index}`}>
+            <b>{line.qty}</b>
             <span>
-              {line.qty} × {line.name}
+              {line.name}
+              {line.note ? <small>{line.note}</small> : null}
             </span>
-            {line.note ? <small>{line.note}</small> : null}
           </li>
         ))}
       </ul>
+      <p className="kot-count">
+        {count} {count === 1 ? "item" : "items"}
+      </p>
+      <p className="kot-end">End of order</p>
     </article>
   );
 }

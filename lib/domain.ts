@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { ensureJournalColumn, ensureTillEvents, makeSecret, putSetting, query, tx, type Query } from "@/lib/db";
+import { ensureJournalColumn, ensureTillEvents, ensureTillSync, makeSecret, putSetting, query, tx, type Query } from "@/lib/db";
 import { toStaticEmv } from "@/lib/emv";
 import { addMinutes, minutesLeft, normalizePhone, thimphuDayRange } from "@/lib/format";
 import { quoteOvertime, type OvertimeQuote } from "@/lib/overtime";
@@ -221,6 +221,7 @@ export async function addCategory(name: string, outlet: Outlet) {
 
 type VisitRow = {
   id: number;
+  client_key: string | null;
   short_code: string;
   phone: string;
   guardian_name: string;
@@ -246,6 +247,7 @@ type BlockRow = {
 type LineRow = {
   visit_id: number;
   id: number;
+  client_key: string | null;
   name: string;
   qty: number;
   unit_nu: number;
@@ -279,6 +281,7 @@ function grouped<T extends { visit_id: number }>(rows: T[]) {
 
 async function hydrateMany(rows: VisitRow[]): Promise<VisitView[]> {
   if (!rows.length) return [];
+  await ensureTillSync();
   await ensureJournalColumn();
   const ids = rows.map((row) => row.id);
   const marks = ids.map(() => "?").join(", ");
@@ -289,7 +292,7 @@ async function hydrateMany(rows: VisitRow[]): Promise<VisitView[]> {
       ids,
     ),
     query().many<LineRow>(
-      `SELECT visit_id, id, name, qty, unit_nu, amount_nu, outlet, paid, fired_qty
+      `SELECT visit_id, id, client_key, name, qty, unit_nu, amount_nu, outlet, paid, fired_qty
        FROM tab_lines WHERE visit_id IN (${marks}) ORDER BY id`,
       ids,
     ),
@@ -314,6 +317,7 @@ async function hydrate(row: VisitRow): Promise<VisitView> {
 function toVisit(row: VisitRow, blocks: BlockRow[], lines: LineRow[], payments: PayRow[], rates: Rate[] | null): VisitView {
   const mappedLines: TabLine[] = lines.map((line) => ({
     id: line.id,
+    lineKey: line.client_key || `line:${line.id}`,
     name: line.name,
     qty: line.qty,
     unitNu: line.unit_nu,
@@ -338,6 +342,7 @@ function toVisit(row: VisitRow, blocks: BlockRow[], lines: LineRow[], payments: 
     (overtime?.amountNu ?? 0);
   return {
     id: row.id,
+    clientKey: row.client_key || `server:${row.id}`,
     code: row.short_code,
     phone: row.phone,
     guardianName: row.guardian_name,
@@ -365,7 +370,7 @@ function toVisit(row: VisitRow, blocks: BlockRow[], lines: LineRow[], payments: 
 }
 
 const VISIT_SQL = `
-  SELECT v.id, v.short_code, g.phone, g.name AS guardian_name, v.child_count, v.status,
+  SELECT v.id, v.client_key, v.short_code, g.phone, g.name AS guardian_name, v.child_count, v.status,
          v.created_at, v.paid_until, v.closed_at, v.table_no
   FROM visits v
   JOIN guardians g ON g.id = v.guardian_id
@@ -437,7 +442,10 @@ export async function createVisit(input: {
   station?: string;
   journal?: string;
   payBank?: string;
+  code?: string;
+  clientKey?: string;
 }): Promise<VisitView> {
+  await ensureTillSync();
   const phone = normalizePhone(input.phone);
   if (!phone) throw new Error("Enter an 8-digit phone number.");
   const children = Math.round(input.childCount);
@@ -463,7 +471,8 @@ export async function createVisit(input: {
     if (guardian && input.name.trim()) {
       await database.exec("UPDATE guardians SET name = ? WHERE id = ?", [input.name.trim(), guardianId]);
     }
-    let code = shortCode();
+    const wanted = (input.code ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    let code = wanted.length >= 4 ? wanted : shortCode();
     while (await database.one("SELECT 1 FROM visits WHERE short_code = ?", [code])) {
       code = shortCode();
     }
@@ -487,6 +496,9 @@ export async function createVisit(input: {
     await recordPayment(database, createdVisit, "playtime", "bank_qr", bankNu, station, journal, input.payBank ?? "");
     return createdVisit;
   });
+  if (input.clientKey) {
+    await query().exec("UPDATE visits SET client_key = ? WHERE id = ? AND client_key IS NULL", [input.clientKey, visitId]);
+  }
   return (await getVisitById(visitId))!;
 }
 
@@ -664,12 +676,18 @@ export async function removeLatestUnpaidBlock(visitId: number): Promise<VisitVie
   return (await getVisitById(visitId))!;
 }
 
-export async function addWalkInItem(itemId: number, outlet: Outlet): Promise<VisitView> {
+export async function addWalkInItem(
+  itemId: number,
+  outlet: Outlet,
+  stamp?: { code?: string; clientKey?: string; lineKey?: string },
+): Promise<VisitView> {
+  await ensureTillSync();
   const item = (await listMenu(outlet)).find((row) => row.id === itemId);
   if (!item) throw new Error("That item is not on this counter.");
   const created = nowIso();
   const visitId = await tx(async (database) => {
-    let code = shortCode();
+    const wanted = (stamp?.code ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    let code = wanted.length >= 4 ? wanted : shortCode();
     while (await database.one("SELECT 1 FROM visits WHERE short_code = ?", [code])) code = shortCode();
     const guardianId = await database.insert("INSERT INTO guardians (phone, name, created_at) VALUES (?, ?, ?)", [
       `F${code}`,
@@ -683,16 +701,20 @@ export async function addWalkInItem(itemId: number, outlet: Outlet): Promise<Vis
     );
     await database.exec(
       `INSERT INTO tab_lines
-       (visit_id, item_id, name, qty, unit_nu, amount_nu, outlet, paid, created_at)
-       VALUES (?, ?, ?, 1, ?, ?, ?, 0, ?)`,
-      [createdVisit, item.id, item.name, item.priceNu, item.priceNu, outlet, created],
+       (visit_id, item_id, name, qty, unit_nu, amount_nu, outlet, paid, created_at, client_key)
+       VALUES (?, ?, ?, 1, ?, ?, ?, 0, ?, ?)`,
+      [createdVisit, item.id, item.name, item.priceNu, item.priceNu, outlet, created, stamp?.lineKey ?? null],
     );
     return createdVisit;
   });
+  if (stamp?.clientKey) {
+    await query().exec("UPDATE visits SET client_key = ? WHERE id = ? AND client_key IS NULL", [stamp.clientKey, visitId]);
+  }
   return (await getVisitById(visitId))!;
 }
 
-export async function addTabItem(visitId: number, itemId: number, outlet: Outlet): Promise<VisitView> {
+export async function addTabItem(visitId: number, itemId: number, outlet: Outlet, lineKey?: string): Promise<VisitView> {
+  await ensureTillSync();
   const visit = await requireOpen(visitId);
   const item = (await listMenu(outlet)).find((row) => row.id === itemId);
   if (!item) throw new Error("That item is not on this counter.");
@@ -709,9 +731,9 @@ export async function addTabItem(visitId: number, itemId: number, outlet: Outlet
   } else {
     await query().exec(
       `INSERT INTO tab_lines
-       (visit_id, item_id, name, qty, unit_nu, amount_nu, outlet, paid, created_at)
-       VALUES (?, ?, ?, 1, ?, ?, ?, 0, ?)`,
-      [visitId, item.id, item.name, item.priceNu, item.priceNu, outlet, nowIso()],
+       (visit_id, item_id, name, qty, unit_nu, amount_nu, outlet, paid, created_at, client_key)
+       VALUES (?, ?, ?, 1, ?, ?, ?, 0, ?, ?)`,
+      [visitId, item.id, item.name, item.priceNu, item.priceNu, outlet, nowIso(), lineKey ?? null],
     );
   }
   return (await getVisitById(visitId))!;

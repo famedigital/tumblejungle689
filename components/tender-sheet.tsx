@@ -17,7 +17,7 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BankPick } from "@/components/bank-pick";
-import { formatNu, formatPhone } from "@/lib/format";
+import { formatNu, formatPhone, tableLabel } from "@/lib/format";
 import { bankFromJournal } from "@/lib/pay-banks";
 import { isPoleJournal, POLE_CHANNEL } from "@/lib/pole";
 
@@ -69,12 +69,12 @@ export function TenderSheet({
   const bankNamed = bankNu <= 0 || Boolean(payBank);
   const bankReady = (bankNu <= 0 || Boolean(staticPayload)) && journalReady && bankNamed;
   const title = bill?.walkIn
-    ? "Walk-in"
+    ? tableLabel(bill.table)
     : customer && customer.phone.length === 8
       ? formatPhone(customer.phone)
       : customer?.name.trim() || "Guest";
   const detail = [
-    bill ? (bill.table ? `Table ${bill.table}` : "No table yet") : "",
+    bill && !bill.walkIn ? (bill.table ? tableLabel(bill.table) : "") : "",
     bill && bill.items > 0 ? `${bill.items} ${bill.items === 1 ? "item" : "items"}` : "",
     !bill && customer && customer.children > 0 ? `${customer.children} ${customer.children === 1 ? "child" : "children"}` : "",
   ]

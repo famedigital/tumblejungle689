@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { formatNu, formatPhone, formatWhen, minutesLeft } from "@/lib/format";
+import { formatNu, formatPhone, minutesLeft, tableLabel } from "@/lib/format";
 import type { VisitView } from "@/lib/types";
 import { canFloorDrop, canLeaveOnTime, isPlayVisit, playIsOvertime } from "@/lib/visit-rules";
 
@@ -22,6 +22,11 @@ export function HoldSheet({
   onClose,
   desk = "/cashier",
   venue = "Tumble Jumble",
+  staff = "",
+  onOpen,
+  onLeave,
+  onCancel,
+  onRelease,
 }: {
   visits: VisitView[];
   now: number;
@@ -29,6 +34,11 @@ export function HoldSheet({
   onClose: () => void;
   desk?: string;
   venue?: string;
+  staff?: string;
+  onOpen?: (visit: VisitView) => void;
+  onLeave?: (visit: VisitView) => void;
+  onCancel?: (visit: VisitView) => void;
+  onRelease?: (visit: VisitView, choice: "waive" | "delete", secret: string) => void;
 }) {
   const [find, setFind] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
@@ -93,16 +103,25 @@ export function HoldSheet({
           setGate({ id: selected.visit.id, mode: "void" });
           return;
         }
+        if (canLeaveOnTime(selected.visit, now) && onLeave) {
+          onLeave(selected.visit);
+          return;
+        }
+        if (canFloorDrop(selected.visit, now) && onCancel) {
+          onCancel(selected.visit);
+          return;
+        }
         const form = document.querySelector(`form[data-hold-id="${selected.visit.id}"]`);
         if (form instanceof HTMLFormElement) form.requestSubmit();
       } else if (event.key === "Enter" && selected && !(event.target instanceof HTMLButtonElement)) {
         event.preventDefault();
-        window.location.href = `${desk}?q=${selected.visit.code}`;
+        if (onOpen) onOpen(selected.visit);
+        else window.location.href = `${desk}?q=${selected.visit.code}`;
       }
     }
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [rows, selected, onClose, desk, gate, now]);
+  }, [rows, selected, onClose, desk, gate, now, onOpen, onLeave, onCancel]);
 
   useEffect(() => {
     const node = document.querySelector(".hold-row[data-pick='1']");
@@ -153,10 +172,23 @@ export function HoldSheet({
                 data-pick={selected?.visit.id === visit.id ? "1" : "0"}
                 onMouseEnter={() => setSelectedId(visit.id)}
               >
+                {onOpen ? (
+                  <button type="button" onClick={() => onOpen(visit)}>
+                    {playing ? <MiniRing end={visit.paidUntil} spanMin={playSpanMinutes(visit.blocks)} /> : <span className="text-xs text-muted-foreground">Bill</span>}
+                    <span>
+                      <strong>{playing ? formatPhone(visit.phone) : tableLabel(visit.tableNo)}</strong>
+                      <small>
+                        {playing
+                          ? `${visit.childCount} ${visit.childCount === 1 ? "child" : "children"} · ${visit.code}`
+                          : `${visit.lines.reduce((sum, line) => sum + line.qty, 0)} items · ${visit.code}`}
+                      </small>
+                    </span>
+                  </button>
+                ) : (
                 <Link href={`${desk}?q=${visit.code}`} aria-current={visit.id === currentId ? "page" : undefined}>
                   {playing ? <MiniRing end={visit.paidUntil} spanMin={playSpanMinutes(visit.blocks)} /> : <span className="text-xs text-muted-foreground">Bill</span>}
                   <span>
-                    <strong>{playing ? formatPhone(visit.phone) : "Walk-in"}</strong>
+                    <strong>{playing ? formatPhone(visit.phone) : tableLabel(visit.tableNo)}</strong>
                     <small>
                       {playing
                         ? `${visit.childCount} ${visit.childCount === 1 ? "child" : "children"} · ${visit.code}`
@@ -164,12 +196,18 @@ export function HoldSheet({
                     </small>
                   </span>
                 </Link>
+                )}
                 {visit.dueNu > 0 ? <b>{formatNu(visit.dueNu)}</b> : <b className="hold-clear">Paid</b>}
                 {over ? (
                   <Button type="button" size="xs" variant="outline" onClick={() => setGate({ id: visit.id, mode: "over" })}>
                     Delete
                   </Button>
                 ) : canLeaveOnTime(visit, now) ? (
+                  onLeave ? (
+                    <Button type="button" size="xs" variant="outline" onClick={() => onLeave(visit)}>
+                      Left
+                    </Button>
+                  ) : (
                   <form action={leaveHoldAction} data-hold-id={visit.id}>
                     <input type="hidden" name="visitId" value={visit.id} />
                     <input type="hidden" name="code" value={visit.code} />
@@ -178,7 +216,13 @@ export function HoldSheet({
                       Left
                     </Button>
                   </form>
+                  )
                 ) : canFloorDrop(visit, now) ? (
+                  onCancel ? (
+                    <Button type="button" size="xs" variant="outline" onClick={() => onCancel(visit)}>
+                      Remove
+                    </Button>
+                  ) : (
                   <form action={cancelHoldAction} data-hold-id={visit.id}>
                     <input type="hidden" name="visitId" value={visit.id} />
                     <input type="hidden" name="code" value={visit.code} />
@@ -187,6 +231,7 @@ export function HoldSheet({
                       Remove
                     </Button>
                   </form>
+                  )
                 ) : (
                   <Button type="button" size="xs" variant="outline" onClick={() => setGate({ id: visit.id, mode: "void" })}>
                     Void
@@ -203,7 +248,10 @@ export function HoldSheet({
         mode={gate?.mode ?? "over"}
         desk={desk}
         venue={venue}
+        staff={staff}
         onClose={() => setGate(null)}
+        onOpen={onOpen}
+        onRelease={onRelease}
       />
     </div>
   );
@@ -214,16 +262,23 @@ function OvertimeGate({
   mode,
   desk,
   venue,
+  staff,
   onClose,
+  onOpen,
+  onRelease,
 }: {
   visit: VisitView | null;
   mode: "over" | "void";
   desk: string;
   venue: string;
+  staff: string;
   onClose: () => void;
+  onOpen?: (visit: VisitView) => void;
+  onRelease?: (visit: VisitView, choice: "waive" | "delete", secret: string) => void;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [armed, setArmed] = useState(false);
+  const [stamp, setStamp] = useState("");
   const fired = visit?.lines.filter((line) => !line.paid && line.firedQty > 0) ?? [];
 
   useEffect(() => {
@@ -253,14 +308,20 @@ function OvertimeGate({
         </DialogHeader>
         {visit ? (
           <div className="grid gap-3">
+            {onOpen && visit ? (
+              <Button type="button" onClick={() => onOpen(visit)}>
+                Take payment
+              </Button>
+            ) : (
             <Button asChild>
               <Link href={`${desk}?q=${visit.code}`} onClick={onClose}>
                 Take payment
               </Link>
             </Button>
+            )}
             <form
               ref={formRef}
-              action={releaseHoldAction}
+              action={onRelease ? undefined : releaseHoldAction}
               className="grid gap-3"
               onSubmit={(event) => {
                 const submitter = event.nativeEvent instanceof SubmitEvent ? event.nativeEvent.submitter : null;
@@ -268,7 +329,14 @@ function OvertimeGate({
                 const pin = String(new FormData(event.currentTarget).get("secret") ?? "").trim();
                 if (choice === "delete" && fired.length > 0 && !armed && pin) {
                   event.preventDefault();
+                  setStamp(new Date().toISOString());
                   setArmed(true);
+                  return;
+                }
+                if (onRelease && visit && pin && (choice === "waive" || choice === "delete")) {
+                  event.preventDefault();
+                  onRelease(visit, choice === "waive" ? "waive" : "delete", pin);
+                  onClose();
                 }
               }}
             >
@@ -276,7 +344,7 @@ function OvertimeGate({
               <input type="hidden" name="code" value={visit.code} />
               <input type="hidden" name="back" value={desk} />
               <Field label="Manager PIN">
-                <Input name="secret" type="password" inputMode="numeric" autoComplete="off" autoFocus />
+                <Input name="secret" type="text" inputMode="numeric" autoComplete="off" autoCapitalize="off" spellCheck={false} autoFocus className="till-secret" />
               </Field>
               <div className="flex gap-2">
                 {mode === "over" ? (
@@ -295,8 +363,8 @@ function OvertimeGate({
                 tableNo={visit.tableNo || "Counter"}
                 phone={visit.phone}
                 code={visit.code}
-                qr=""
-                when={formatWhen(new Date().toISOString())}
+                orderedAt={stamp || new Date().toISOString()}
+                staff={staff}
                 reprint={false}
                 cancel
                 lines={fired.map((line) => ({

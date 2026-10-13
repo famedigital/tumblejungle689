@@ -22,10 +22,10 @@ export default async function LoginPage({
         <p className="mt-2 text-sm text-muted-foreground">Sign in on this computer. Nothing is sent to a cloud account.</p>
       </div>
       <Flash error={error} />
-      <form action={loginAction} className="space-y-4 rounded-2xl bg-card p-5 ring-1 ring-foreground/10">
+      <form action={loginAction} autoComplete="off" className="space-y-4 rounded-2xl bg-card p-5 ring-1 ring-foreground/10">
         <div className="space-y-1">
           <Label htmlFor="secret">Password or PIN</Label>
-          <Input id="secret" name="secret" type="password" autoComplete="current-password" required className="h-12 text-lg" />
+          <Input id="secret" name="secret" type="text" autoComplete="off" autoCapitalize="off" spellCheck={false} required className="till-secret h-12 text-lg" />
         </div>
         <Button type="submit" className="h-11 w-full">
           Sign in

@@ -85,40 +85,6 @@ void main() {
   gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
 }`;
 
-const HERO_FRAG = `#version 300 es
-precision highp float;
-uniform vec2 u_res;
-uniform float u_remain;
-uniform float u_over;
-uniform float u_time;
-out vec4 frag;
-void main() {
-  vec2 p = (gl_FragCoord.xy / u_res) * 2.0 - 1.0;
-  p.y = -p.y;
-  float r = length(p);
-  float a = atan(-p.x, p.y);
-  if (a < 0.0) a += 6.2831853;
-  float u = a / 6.2831853;
-  float band = abs(r - 0.72);
-  float track = smoothstep(0.055, 0.02, band);
-  float on = u_over > 0.5 ? 0.55 + 0.45 * (0.5 + 0.5 * sin(u_time * 3.4)) : step(u, u_remain);
-  vec3 pine = vec3(0.080, 0.620, 0.580);
-  vec3 saffron = vec3(0.920, 0.680, 0.160);
-  vec3 danger = vec3(0.760, 0.270, 0.220);
-  vec3 col = u_over > 0.5 ? danger : mix(saffron, pine, smoothstep(0.12, 0.8, u_remain));
-  float sweep = u_over > 0.5 ? 1.0 : on;
-  float glow = exp(-pow(band / 0.11, 2.0)) * sweep * 0.62;
-  float ring = track * sweep;
-  float ha = (u_over > 0.5 ? fract(u_time * 0.15) : u_remain) * 6.2831853;
-  vec2 head = vec2(sin(ha), cos(ha)) * 0.72;
-  float cap = smoothstep(0.075, 0.0, length(p - head));
-  float disc = smoothstep(0.58, 0.12, r) * 0.07;
-  float alpha = clamp(ring + glow * 0.85 + cap, 0.0, 1.0);
-  vec3 rgb = col * (ring + cap) + col * glow + pine * disc;
-  float aout = clamp(alpha + disc, 0.0, 1.0);
-  frag = vec4(rgb, aout);
-}`;
-
 const FIELD_FRAG = `#version 300 es
 precision highp float;
 uniform vec2 u_res;
@@ -177,61 +143,62 @@ function fit(canvas: HTMLCanvasElement, gl: WebGL2RenderingContext) {
   gl.viewport(0, 0, canvas.width, canvas.height);
 }
 
-export function GlowTimer({ end, spanMin }: { end: string; spanMin: number }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+const HERO_R = 52;
+const HERO_C = 2 * Math.PI * HERO_R;
+
+function phaseOf(leftMs: number): "ok" | "warn" | "over" {
+  if (leftMs < 0) return "over";
+  if (leftMs <= 120_000) return "warn";
+  return "ok";
+}
+
+export function GlowTimer({ end, spanMin, until }: { end: string; spanMin: number; until?: string }) {
+  const ringRef = useRef<SVGCircleElement>(null);
   const labelRef = useRef<HTMLSpanElement>(null);
+  const captionRef = useRef<HTMLElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    const label = labelRef.current;
-    const wrap = wrapRef.current;
-    if (!canvas || !label || !wrap) return;
-    const gl = canvas.getContext("webgl2", { alpha: true, premultipliedAlpha: false, antialias: true });
     const endMs = new Date(end).getTime();
     const span = Math.max(spanMin, 1) * 60_000;
-
-    if (!gl) {
-      return onTick((now) => {
-        const left = endMs - now;
-        paintClock(label, left);
-        wrap.dataset.over = left < 0 ? "1" : "0";
-      });
-    }
-
-    const prog = program(gl, HERO_FRAG);
-    if (!prog) return onTick((now) => {
-      paintClock(label, endMs - now);
-    });
-    const uRes = gl.getUniformLocation(prog, "u_res");
-    const uRemain = gl.getUniformLocation(prog, "u_remain");
-    const uOver = gl.getUniformLocation(prog, "u_over");
-    const uTime = gl.getUniformLocation(prog, "u_time");
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-
-    const stop = onTick((now) => {
+    return onTick((now) => {
       const left = endMs - now;
-      fit(canvas, gl);
-      gl.useProgram(prog);
-      gl.uniform2f(uRes, canvas.width, canvas.height);
-      gl.uniform1f(uRemain, Math.min(1, Math.max(0, left / span)));
-      gl.uniform1f(uOver, left < 0 ? 1 : 0);
-      gl.uniform1f(uTime, now / 1000);
-      gl.drawArrays(gl.TRIANGLES, 0, 3);
-      paintClock(label, left);
-      wrap.dataset.over = left < 0 ? "1" : "0";
+      const phase = phaseOf(left);
+      const remain = phase === "over" ? 1 : Math.min(1, Math.max(0, left / span));
+      const ring = ringRef.current;
+      if (ring) {
+        ring.style.strokeDashoffset = String(HERO_C * (1 - remain));
+        ring.dataset.phase = phase;
+      }
+      if (labelRef.current) paintClock(labelRef.current, left);
+      if (captionRef.current) captionRef.current.textContent = phase === "over" ? "Overtime" : phase === "warn" ? "Ending" : "On time";
+      if (wrapRef.current) wrapRef.current.dataset.phase = phase;
     });
-    return () => {
-      stop();
-      gl.getExtension("WEBGL_lose_context")?.loseContext();
-    };
   }, [end, spanMin]);
 
   return (
-    <div className="live-hero" ref={wrapRef}>
-      <canvas ref={canvasRef} />
-      <span ref={labelRef}>0:00</span>
+    <div className="live-hero" ref={wrapRef} data-phase="ok">
+      <div className="live-hero-face">
+        <svg viewBox="0 0 120 120" aria-hidden>
+          <circle cx="60" cy="60" r={HERO_R} className="live-hero-track" />
+          <circle
+            ref={ringRef}
+            cx="60"
+            cy="60"
+            r={HERO_R}
+            className="live-hero-arc"
+            data-phase="ok"
+            transform="rotate(-90 60 60)"
+            strokeDasharray={`${HERO_C} ${HERO_C}`}
+            strokeDashoffset={HERO_C}
+          />
+        </svg>
+        <span ref={labelRef}>0:00</span>
+      </div>
+      <p className="live-hero-caption">
+        <em ref={captionRef}>On time</em>
+        {until ? <small>until {until}</small> : null}
+      </p>
     </div>
   );
 }
