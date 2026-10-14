@@ -90,10 +90,10 @@ export function TenderSheet({
       if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
       const typing = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
       if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-        if (typing) return;
         event.preventDefault();
+        event.stopPropagation();
         const methods: TenderMethod[] = ["bank_qr", "cash", "split"];
-        const index = methods.indexOf(method);
+        const index = Math.max(0, methods.indexOf(method));
         const step = event.key === "ArrowRight" ? 1 : -1;
         onMethod(methods[(index + step + methods.length) % methods.length]!);
         return;
@@ -158,7 +158,7 @@ export function TenderSheet({
           <div className="grid content-start gap-3">
             <DialogHeader className="gap-0">
               <DialogTitle>Tender</DialogTitle>
-              <DialogDescription>B bank, C cash, S split. Enter types the journal number, then prints the receipt.</DialogDescription>
+              <DialogDescription>Left and right change Bank, Cash, or Split. B, C, and S do the same. Enter types the journal number, then prints the receipt.</DialogDescription>
             </DialogHeader>
             <Card size="sm" className="gap-1">
               <CardHeader className="items-center">

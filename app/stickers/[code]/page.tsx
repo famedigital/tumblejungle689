@@ -2,7 +2,6 @@ import { notFound, redirect } from "next/navigation";
 import { StickerSheet } from "@/components/sticker-sheet";
 import { getSession } from "@/lib/auth";
 import { getSettings, getVisitByCode } from "@/lib/domain";
-import { formatPhone } from "@/lib/format";
 import { requestOrigin, visitPath } from "@/lib/origin";
 import { qrDataUrl } from "@/lib/qr";
 import { can } from "@/lib/types";
@@ -22,9 +21,11 @@ export default async function StickersPage({ params }: { params: Promise<{ code:
     <StickerSheet
       venue={settings.venueName}
       code={visit.code}
-      phone={formatPhone(visit.phone)}
+      phone={visit.phone}
       qr={qr}
       children={visit.childCount}
+      started={visit.createdAt}
+      ends={visit.paidUntil}
       back={back}
     />
   );

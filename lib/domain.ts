@@ -602,6 +602,45 @@ export async function createVisit(input: {
   return (await getVisitById(visitId))!;
 }
 
+export async function startUnpaidPlay(input: {
+  phone: string;
+  minutes: number;
+  code?: string;
+  clientKey: string;
+}): Promise<VisitView> {
+  await ensureTillSync();
+  const phone = normalizePhone(input.phone);
+  if (!phone) throw new Error("Enter an 8-digit phone number.");
+  const existing = await findOpenByPhone(phone);
+  if (existing) throw new Error(`This phone already has an open visit, ${existing.code}.`);
+  const rate = await rateFor(input.minutes);
+  const created = nowIso();
+  const paidUntil = addMinutes(created, rate.minutes);
+  const visitId = await tx(async (database) => {
+    const guardian = await database.one<{ id: number }>("SELECT id FROM guardians WHERE phone = ?", [phone]);
+    const guardianId = guardian
+      ? guardian.id
+      : await database.insert("INSERT INTO guardians (phone, name, created_at) VALUES (?, '', ?)", [phone, created]);
+    const wanted = (input.code ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    let code = wanted.length >= 4 ? wanted : shortCode();
+    while (await database.one("SELECT 1 FROM visits WHERE short_code = ?", [code])) code = shortCode();
+    const createdVisit = await database.insert(
+      `INSERT INTO visits (short_code, guardian_id, status, child_count, created_at, paid_until)
+       VALUES (?, ?, 'open', 1, ?, ?)`,
+      [code, guardianId, created, paidUntil],
+    );
+    await database.exec(
+      `INSERT INTO play_blocks
+       (visit_id, minutes, amount_nu, paid, prior_until, extends_to, created_at)
+       VALUES (?, ?, ?, 0, ?, ?, ?)`,
+      [createdVisit, rate.minutes, rate.amountNu, created, paidUntil, created],
+    );
+    return createdVisit;
+  });
+  await query().exec("UPDATE visits SET client_key = ? WHERE id = ? AND client_key IS NULL", [input.clientKey, visitId]);
+  return (await getVisitById(visitId))!;
+}
+
 async function requireOpen(visitId: number): Promise<VisitView> {
   const visit = await getVisitById(visitId);
   if (!visit) throw new Error("Visit not found.");
@@ -643,7 +682,7 @@ export async function addPlayBlock(visitId: number, minutes: number, phone = "")
        VALUES (?, ?, ?, 0, ?, ?, ?)`,
       [visitId, rate.minutes, rate.amountNu, visit.paidUntil, extendsTo, created],
     );
-    await database.exec("UPDATE visits SET paid_until = ?, child_count = ? WHERE id = ?", [extendsTo, children, visitId]);
+    await database.exec("UPDATE visits SET paid_until = ?, child_count = ?, left_at = NULL WHERE id = ?", [extendsTo, children, visitId]);
   });
   return (await getVisitById(visitId))!;
 }

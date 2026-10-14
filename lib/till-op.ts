@@ -29,7 +29,7 @@ export type TillOp = {
       bankNu?: number;
     }
   | { kind: "addChildren"; childCount: number }
-  | { kind: "addPlay"; minutes: number; phone?: string }
+  | { kind: "addPlay"; minutes: number; phone?: string; code?: string }
   | { kind: "removePlay" }
   | { kind: "holdPlay" }
   | { kind: "saveKot"; tableNo: string; lineKeys: string[] }
@@ -90,6 +90,7 @@ function applyOne(
     if (phone.length !== 8) throw new Error("Enter an 8-digit phone number.");
     const clash = visits.find((visit) => visit.status === "open" && visit.phone === phone && visitKey(visit) !== op.visitKey);
     if (clash) throw new Error(`This phone already has an open visit, ${clash.code}.`);
+    if (!visits.some((visit) => visitKey(visit) === op.visitKey)) return [...visits, freshPlay(op, rates)];
   }
   return visits.map((visit) => (visitKey(visit) === op.visitKey ? change(visit, op, menu, rates, extraPerMinNu, charges) : visit));
 }
@@ -261,6 +262,45 @@ function voidLine(visit: VisitView, key: string, nextQty: number): VisitView {
   };
 }
 
+function freshPlay(op: Extract<TillOp, { kind: "addPlay" }>, rates: Rate[]): VisitView {
+  const phone = op.phone?.replace(/\D/g, "") ?? "";
+  const rate = rates.find((item) => item.minutes === op.minutes);
+  if (!rate) throw new Error("Choose a play time from the rate card.");
+  if (phone.length !== 8) throw new Error("Enter an 8-digit phone number.");
+  const paidUntil = addMinutes(op.at, rate.minutes);
+  const visit: VisitView = {
+    id: tempId(op.visitKey),
+    clientKey: op.visitKey,
+    code: op.code || "PLAY",
+    phone,
+    guardianName: "",
+    childCount: 1,
+    status: "open",
+    createdAt: op.at,
+    paidUntil,
+    leftAt: null,
+    closedAt: null,
+    tableNo: "",
+    blocks: [
+      {
+        id: tempId(`${op.visitKey}:play`),
+        minutes: rate.minutes,
+        amountNu: rate.amountNu,
+        paid: false,
+        priorUntil: op.at,
+        extendsTo: paidUntil,
+        createdAt: op.at,
+      },
+    ],
+    lines: [],
+    payments: [],
+    dueNu: rate.amountNu,
+    overtime: null,
+    receiptNo: null,
+  };
+  return price(visit, rates);
+}
+
 function addPlay(visit: VisitView, minutes: number, at: string, rates: Rate[]): VisitView {
   const rate = rates.find((item) => item.minutes === minutes);
   if (!rate) throw new Error("Choose a play time from the rate card.");
@@ -269,6 +309,7 @@ function addPlay(visit: VisitView, minutes: number, at: string, rates: Rate[]): 
   return {
     ...visit,
     paidUntil: extendsTo,
+    leftAt: null,
     blocks: [
       ...visit.blocks,
       {

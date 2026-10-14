@@ -205,11 +205,12 @@
     position: fixed !important;
     left: 0 !important;
     top: 0 !important;
-    display: flex !important;
-    flex-wrap: wrap;
-    gap: 4mm;
+    display: block !important;
+    width: 74mm !important;
+    margin: 0 !important;
     background: white;
     visibility: visible !important;
+    page: playpass;
   }
   body[data-print="sticker"] .print-sticker {
     position: static !important;
@@ -577,51 +578,84 @@
   padding: 2rem 1rem 3rem;
 }
 .print-sticker-sheet {
-  display: flex;
-  flex-wrap: wrap;
-  align-content: center;
-  justify-content: center;
-  gap: 1rem;
+  display: block;
+  width: 80mm;
 }
 @media screen {
-  .sticker-desk .print-sticker {
-    width: 68mm;
-    padding: 4mm;
-    border-style: solid;
-    border-color: #d5ddd8;
+  .sticker-desk .print-sticker,
+  .cash-print-source .print-sticker {
+    width: 74mm;
     box-shadow: 0 18px 40px rgb(28 36 32 / 14%);
-  }
-  .sticker-desk .print-sticker img {
-    width: 48mm;
-    height: 48mm;
   }
 }
 .print-sticker {
-  width: 52mm;
-  border: 1px dashed var(--border);
-  border-radius: 6px;
+  width: 74mm;
+  margin: 0;
+  padding: 3mm 3mm 4mm;
   background: white;
-  padding: 3mm;
+  color: #141414;
   text-align: center;
-  color: #111;
-  box-shadow: 0 12px 28px rgb(28 36 32 / 12%);
+  font-family: var(--font-sans), Nunito, sans-serif;
+}
+.print-sticker p,
+.print-sticker dl {
+  margin: 0;
+}
+.print-sticker .pass-kicker {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.28em;
+  text-indent: 0.28em;
+  text-transform: uppercase;
+}
+.print-sticker .pass-venue {
+  margin-top: 1mm;
+  font-family: var(--font-heading), Georgia, serif;
+  font-size: 22px;
+  font-weight: 560;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+.print-sticker .pass-venue::after {
+  content: "";
+  display: block;
+  height: 1mm;
+  margin: 2.5mm auto 0;
+  border-top: 2.5px solid #141414;
+  border-bottom: 1px solid #141414;
 }
 .print-sticker img {
-  width: 36mm;
-  height: 36mm;
-  margin: 1mm auto;
-}
-.print-sticker p {
-  margin: 0;
-  font-size: 10px;
+  width: 42mm;
+  height: 42mm;
+  margin: 3mm auto 1mm;
 }
 .print-sticker .sticker-code {
-  font-family: ui-monospace, Consolas, monospace;
-  font-size: 14px;
-  letter-spacing: 0.14em;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-indent: 0.22em;
 }
-.print-sticker .sticker-who {
-  font-weight: 700;
+.print-sticker .pass-facts {
+  margin-top: 3mm;
+  padding-top: 2mm;
+  border-top: 1px dashed #141414;
+  text-align: left;
+}
+.print-sticker .pass-facts div {
+  display: flex;
+  justify-content: space-between;
+  gap: 4mm;
+  padding: 1.1mm 0;
+  font-size: 13px;
+}
+.print-sticker .pass-facts dt {
+  font-weight: 650;
+}
+.print-sticker .pass-facts dd {
+  margin: 0;
+  font-weight: 800;
+  text-align: right;
 }
 .receipt-print,
 .receipt-back {
@@ -654,6 +688,11 @@
 
 @page {
   margin: 8mm;
+}
+
+@page playpass {
+  size: 80mm auto;
+  margin: 3mm;
 }
 
 [data-surface="pos"] {
@@ -1549,6 +1588,15 @@
 
 [data-touch="cashier"] [data-play-card] {
   box-shadow: 0 12px 28px rgb(28 36 32 / 10%);
+}
+
+[data-touch="cashier"] [data-play-card][data-on="1"] {
+  outline: 3px solid #146047;
+  outline-offset: 2px;
+  box-shadow:
+    0 0 0 5px rgb(226 160 8 / 85%),
+    0 18px 36px rgb(20 96 71 / 28%);
+  z-index: 1;
 }
 
 [data-touch="cashier"] [data-play-card][data-wash="0"] { background: linear-gradient(145deg, #f3fbf6 0%, #b7e4cc 100%); }
@@ -2581,6 +2629,12 @@
 @media (min-width: 768px) and (max-width: 1023px) {
   [data-touch="cashier"] .cash-board {
     grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  }
+
+  [data-touch="cashier"] .cash-stage[data-rail="open"] .cash-paper {
+    left: auto;
+    width: min(24rem, 46vw);
+    border-left: 1px solid var(--line);
   }
 }
 

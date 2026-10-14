@@ -9,7 +9,13 @@ export function ReceiptActions() {
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
-      if (event.key !== "Escape" || event.repeat) return;
+      if (event.repeat) return;
+      if (event.key === "Enter") {
+        event.preventDefault();
+        window.print();
+        return;
+      }
+      if (event.key !== "Escape") return;
       event.preventDefault();
       router.push("/cashier");
     }

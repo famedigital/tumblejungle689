@@ -7,6 +7,7 @@ import { addCounterDish, logoutAction, openBackOfficeAction } from "@/app/action
 import { BankPick } from "@/components/bank-pick";
 import { Receipt } from "@/components/receipt";
 import { PassCard } from "@/components/pass-card";
+import { PlayPass } from "@/components/play-pass";
 import { PrintPortal } from "@/components/print-portal";
 import { HoldSheet } from "@/components/hold-sheet";
 import { KotSlip } from "@/components/kot-slip";
@@ -195,6 +196,7 @@ export function CashierTouch({
   const [qr, setQr] = useState("");
   const [ticketUrl, setTicketUrl] = useState("");
   const [localPack, setLocalPack] = useState(false);
+  const [reprintFor, setReprintFor] = useState("");
   const showPack = printPack || localPack;
   const error = book.error || pageError;
   const [cam, setCam] = useState(false);
@@ -231,6 +233,7 @@ export function CashierTouch({
   const printedTicket = useRef(0);
   const tableRef = useRef<HTMLInputElement>(null);
   const saleRef = useRef<() => void>(() => {});
+  const holdRef = useRef<() => void>(() => {});
   const checkForm = useRef<HTMLFormElement>(null);
   const checkField = useRef<HTMLInputElement>(null);
   const [timeUpOpen, setTimeUpOpen] = useState(false);
@@ -259,6 +262,7 @@ export function CashierTouch({
       return { item, walkIn, held, left: walkIn || held ? Number.POSITIVE_INFINITY : minutesLeft(item.paidUntil, now) };
     })
     .sort((a, b) => a.left - b.left);
+  const boardCursor = ranked.length ? Math.min(Math.max(0, boardAt), ranked.length - 1) : 0;
   const openVisit = visit?.status === "open" ? visit : null;
   const walkIn = Boolean(openVisit && openVisit.childCount === 0 && openVisit.blocks.length === 0);
   const tickets = open
@@ -293,6 +297,12 @@ export function CashierTouch({
   useEffect(() => {
     if (openVisit) setCounterClear(false);
   }, [openVisit]);
+
+  useEffect(() => {
+    if (!openVisit) return;
+    const index = ranked.findIndex((row) => row.item.id === openVisit.id);
+    if (index >= 0) setBoardAt((current) => (current === index ? current : index));
+  }, [openVisit?.id]);
 
   useEffect(() => {
     const checkin = tender?.kind === "checkin" ? tender : null;
@@ -429,6 +439,12 @@ export function CashierTouch({
         setPeopleOpen((open) => !open);
         return;
       }
+      if (event.type === "keydown" && event.key === "Escape" && !event.repeat) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        holdRef.current();
+        return;
+      }
       if (event.type !== "keydown" || event.repeat) return;
       if (event.key === "PageUp") {
         event.preventDefault();
@@ -439,8 +455,7 @@ export function CashierTouch({
       }
       if (recentOpen) {
         event.preventDefault();
-        if (event.key === "Escape") setRecentOpen(false);
-        else if (event.key === "ArrowDown" && recent.length) {
+        if (event.key === "ArrowDown" && recent.length) {
           setRecentIndex((index) => Math.min(recent.length - 1, index + 1));
         } else if (event.key === "ArrowUp") setRecentIndex((index) => Math.max(0, index - 1));
         else if (event.key === "Enter" && recent[recentIndex]) {
@@ -454,15 +469,6 @@ export function CashierTouch({
         setPeopleOpen(false);
         setMenuOpen((open) => !open);
         return;
-      }
-      if (event.key === "Escape") {
-        if (document.querySelector("[data-play-phone], [data-new-dish]")) return;
-        if (check) setCheck(null);
-        else if (timeUpOpen) setTimeUpOpen(false);
-        else if (peopleOpen) setPeopleOpen(false);
-        else if (askTable) setAskTable(false);
-        else if (tender) setTender(null);
-        else setMenuOpen(false);
       }
       const typing = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
       const onBoard = !typing && !check && !menuOpen && !recentOpen && !peopleOpen && !timeUpOpen && !askTable && !tender && tab === "playing" && ranked.length > 0;
@@ -830,7 +836,10 @@ export function CashierTouch({
     setTab("playing");
     setCounterClear(true);
     book.openBill("");
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement) focused.blur();
   }
+  holdRef.current = holdCounter;
 
   function showFloor() {
     setCheck(null);
@@ -876,11 +885,15 @@ export function CashierTouch({
           else setCheck({ ...draft, step: "time" });
         } else if (draft.step === "time") {
           setCheck({ ...draft, step: "phone" });
-        } else if (draft.step === "phone" && draft.phone.length === 8) {
-          const match = open.find((item) => item.phone === draft.phone && (item.childCount > 0 || item.blocks.length > 0));
-          if (match) {
-            setCheck({ ...draft, step: "adding", addToId: match.id, addToCode: match.code, addToCount: match.childCount, children: "1" });
-          } else setCheck({ ...draft, step: "children" });
+        } else if (draft.step === "phone") {
+          const typed = event.target instanceof HTMLInputElement ? event.target.value : draft.phone;
+          const digits = typed.replace(/\D/g, "").slice(0, 8);
+          if (digits.length === 8) {
+            const match = open.find((item) => item.phone === digits && (item.childCount > 0 || item.blocks.length > 0));
+            if (match) {
+              setCheck({ ...draft, phone: digits, step: "adding", addToId: match.id, addToCode: match.code, addToCount: match.childCount, children: "1" });
+            } else setCheck({ ...draft, phone: digits, step: "children" });
+          }
         } else if (draft.step === "adding") {
           const more = Number(draft.children);
           if (more >= 1 && (draft.addToCount ?? 0) + more <= 12) setSendCheck(true);
@@ -950,6 +963,29 @@ export function CashierTouch({
       delete document.body.dataset.print;
     };
   }, [showPack, qr, visit?.code]);
+
+  function reprintQr(code: string) {
+    book.openBill(code);
+    setReprintFor(code);
+  }
+
+  useEffect(() => {
+    if (!reprintFor || visit?.code !== reprintFor || !qr) return;
+    const timer = window.setTimeout(() => {
+      document.body.dataset.print = "sticker";
+      window.print();
+    }, 80);
+    function done() {
+      delete document.body.dataset.print;
+      window.removeEventListener("afterprint", done);
+      setReprintFor("");
+    }
+    window.addEventListener("afterprint", done);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("afterprint", done);
+    };
+  }, [reprintFor, visit?.code, qr]);
 
   useEffect(() => {
     if (!ticket) return;
@@ -1168,12 +1204,10 @@ export function CashierTouch({
               <Plus aria-hidden />
               New
             </Button>
-            {openVisit ? (
-              <Button variant="outline" className="h-8" asChild>
-                <Link href={`/stickers/${openVisit.code}`}>
-                  <Sticker aria-hidden />
-                  Stickers
-                </Link>
+            {openVisit && (openVisit.childCount > 0 || openVisit.blocks.length > 0) ? (
+              <Button type="button" variant="outline" className="h-8" onClick={() => reprintQr(openVisit.code)}>
+                <Sticker aria-hidden />
+                Reprint QR
               </Button>
             ) : null}
           </div>
@@ -1222,7 +1256,7 @@ export function CashierTouch({
                 {ranked.length ? (
                   <ul data-play-board="" className="cash-board list-none gap-3 p-3" aria-label="Open visits">
                     {ranked.map((row, index) => {
-                      const on = openVisit ? row.item.id === openVisit.id : index === Math.min(boardAt, ranked.length - 1);
+                      const on = index === boardCursor;
                       const time = row.left < 0 ? "over" : row.left <= 5 ? "ending" : "ok";
                       const label = row.walkIn ? tableLabel(row.item.tableNo) : formatPhone(row.item.phone);
                       const dishes = row.item.lines;
@@ -1284,10 +1318,20 @@ export function CashierTouch({
                                 <Badge variant={time === "over" ? "destructive" : time === "ending" ? "secondary" : "outline"}>
                                   {row.walkIn ? "Walk-in" : row.held ? "Pay held" : time === "over" ? "Overtime" : time === "ending" ? "Ending" : "On time"}
                                 </Badge>
+                                {on ? <Badge>Selected</Badge> : null}
                                 <span className="inline-flex items-center gap-1">
                                   <Users aria-hidden className="size-3.5" />
                                   {detail}
                                 </span>
+                                {!row.walkIn ? (
+                                  <button
+                                    type="button"
+                                    className="pointer-events-auto font-semibold underline"
+                                    onClick={() => reprintQr(row.item.code)}
+                                  >
+                                    Reprint QR
+                                  </button>
+                                ) : null}
                               </CardDescription>
                             </div>
                             {!row.walkIn && row.left < 0 ? (
@@ -1358,6 +1402,11 @@ export function CashierTouch({
                         secret,
                       })
                     }
+                    onOpenPlay={() => {
+                      book.openBill(item.code);
+                      setTab(item.code);
+                      setPaySheet(true);
+                    }}
                   />
                 </TabsContent>
               ))}
@@ -1433,6 +1482,17 @@ export function CashierTouch({
                 setTableNo(value);
               }}
               onSale={() => saleRef.current()}
+              onReprint={() => reprintQr(openVisit.code)}
+              onExtend={(minutes) =>
+                book.commit({
+                  id: crypto.randomUUID(),
+                  at: new Date().toISOString(),
+                  kind: "addPlay",
+                  visitKey: visitKey(openVisit),
+                  minutes,
+                })
+              }
+              rates={playRates}
               onAddChild={
                 openVisit.childCount < 12
                   ? () =>
@@ -1450,22 +1510,19 @@ export function CashierTouch({
             <ChildSheet venueName={venueName} visit={counterClear ? null : (ranked[Math.min(boardAt, Math.max(0, ranked.length - 1))]?.item ?? null)} />
           )}
         </div>
-        {showPack && visit && qr ? (
+        {visit && qr && (visit.childCount > 0 || visit.blocks.length > 0) ? (
           <PrintPortal>
-          <div className="cash-print-source">
-            <div className="print-sticker-sheet">
-              {Array.from({ length: Math.max(1, visit.childCount) }, (_, index) => (
-                <article key={index} className="print-sticker">
-                  <p>{venueName}</p>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={qr} alt="" />
-                  <p className="sticker-code">{visit.code}</p>
-                  <p className="sticker-who">{visit.childCount === 1 ? "Child" : `Child ${index + 1}`}</p>
-                  <p>{formatPhone(visit.phone)}</p>
-                </article>
-              ))}
+            <div className="cash-print-source">
+              <PlayPass
+                venue={venueName}
+                code={visit.code}
+                phone={visit.phone}
+                qr={qr}
+                children={visit.childCount}
+                started={visit.createdAt}
+                ends={visit.paidUntil}
+              />
             </div>
-          </div>
           </PrintPortal>
         ) : null}
         <nav className="cash-thumb" aria-label="Till">
@@ -1654,10 +1711,16 @@ export function CashierTouch({
                 >
                   Recent
                 </button>
-                {openVisit ? (
-                  <Link href={`/stickers/${openVisit.code}`} onClick={() => setMoreOpen(false)}>
-                    Stickers
-                  </Link>
+                {openVisit && (openVisit.childCount > 0 || openVisit.blocks.length > 0) ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMoreOpen(false);
+                      reprintQr(openVisit.code);
+                    }}
+                  >
+                    Reprint QR
+                  </button>
                 ) : null}
                 <button type="button" onClick={() => void book.chooseBackup()}>
                   {book.backupOn ? "Backup on" : "Backup"}
@@ -1771,16 +1834,24 @@ export function CashierTouch({
               }
             }}
             onPlay={(minutes, phone) => {
-              if (!openVisit) return;
+              const digits = phone.replace(/\D/g, "");
+              if (digits.length !== 8) return;
+              const key = openVisit ? visitKey(openVisit) : crypto.randomUUID();
+              const code = openVisit ? openVisit.code : localCode();
               const saved = book.commit({
                 id: crypto.randomUUID(),
                 at: new Date().toISOString(),
                 kind: "addPlay",
-                visitKey: visitKey(openVisit),
+                visitKey: key,
                 minutes,
-                phone,
+                phone: digits,
+                code,
               });
               if (!saved) return;
+              if (!openVisit) {
+                book.openBill(code);
+                setTab("playing");
+              }
               setLocalPack(true);
               setMenuOpen(false);
             }}
@@ -1973,6 +2044,7 @@ function BillTab({
   onDrop,
   onDeliver,
   onVoid,
+  onOpenPlay,
 }: {
   visit: VisitView;
   active: boolean;
@@ -1982,6 +2054,7 @@ function BillTab({
   onDrop: (line: VisitView["lines"][number]) => void;
   onDeliver: (line: VisitView["lines"][number]) => void;
   onVoid: (line: VisitView["lines"][number], next: number, secret: string) => void;
+  onOpenPlay: () => void;
 }) {
   const rows = [
     ...visit.blocks.map((block) => ({
@@ -2003,7 +2076,6 @@ function BillTab({
       line,
     })),
   ];
-  const food = rows.flatMap((row) => (row.line && !row.line.paid ? [row.line] : []));
   const [at, setAt] = useState(0);
   const [voiding, setVoiding] = useState<{ lineId: number; next: number } | null>(null);
   useEffect(() => {
@@ -2013,15 +2085,25 @@ function BillTab({
       if (voiding) return;
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
       if (document.querySelector("[data-till-tender], [aria-label='Menu']")) return;
-      if (!food.length) return;
+      if (!rows.length) return;
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
+        event.stopPropagation();
         const step = event.key === "ArrowDown" ? 1 : -1;
-        setAt((index) => (index + step + food.length) % food.length);
+        setAt((index) => Math.min(rows.length - 1, Math.max(0, index + step)));
         return;
       }
-      const line = food[Math.min(at, food.length - 1)];
-      if (!line) return;
+      const row = rows[Math.min(at, rows.length - 1)];
+      if (!row) return;
+      if (!row.line) {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          event.stopPropagation();
+          onOpenPlay();
+        }
+        return;
+      }
+      const line = row.line;
       if (event.key === "Delete" || event.key === "Backspace") {
         event.preventDefault();
         if (line.firedQty > 0) setVoiding({ lineId: line.id, next: 0 });
@@ -2035,11 +2117,11 @@ function BillTab({
     }
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [active, at, food, voiding]);
+  }, [active, at, rows, voiding, onOpenPlay]);
   if (!rows.length) {
     return <p className="px-4 py-6 text-sm text-muted-foreground">This bill is empty. Alt+L adds a dish. Alt+W starts another walk-in.</p>;
   }
-  const picked = food[Math.min(at, food.length - 1)];
+  const cursor = Math.min(at, Math.max(0, rows.length - 1));
   return (
     <>
     <Table>
@@ -2052,10 +2134,15 @@ function BillTab({
         </TableRow>
       </TableHeader>
       <TableBody>
-      {rows.map((row) => (
+      {rows.map((row, index) => (
         <TableRow
           key={row.key}
-          data-state={row.line && picked?.id === row.line.id ? "selected" : undefined}
+          data-state={index === cursor ? "selected" : undefined}
+          className={row.line ? undefined : "cursor-pointer"}
+          onClick={() => {
+            setAt(index);
+            if (!row.line) onOpenPlay();
+          }}
         >
           <TableCell className="w-14 px-2 py-1">
             {row.line && !row.line.paid ? (
@@ -2080,6 +2167,7 @@ function BillTab({
                     : ""}
                 {row.paid ? " · paid" : ""}
               </Badge>
+              {row.line ? null : <span className="text-xs text-muted-foreground">Finish or extend</span>}
             </div>
           </TableCell>
           <TableCell className="py-1 text-right font-medium tabular-nums">{row.paid ? "Paid" : formatNu(row.amount)}</TableCell>
@@ -2519,7 +2607,8 @@ function MenuSheet({
         if (event.key === "Enter") {
           event.preventDefault();
           event.stopPropagation();
-          const digits = phone.replace(/\D/g, "");
+          const typed = event.target instanceof HTMLInputElement ? event.target.value : phone;
+          const digits = typed.replace(/\D/g, "").slice(0, 8);
           if (digits.length === 8) onPlay(phoneFor, digits);
         }
         return;
@@ -2716,6 +2805,9 @@ function PayRail({
   onTable,
   onClose,
   onSale,
+  onReprint,
+  onExtend,
+  rates,
   onAddChild,
 }: {
   venueName: string;
@@ -2731,6 +2823,9 @@ function PayRail({
   onTable: (value: string) => void;
   onClose?: () => void;
   onSale: () => void;
+  onReprint: () => void;
+  onExtend: (minutes: number) => void;
+  rates: Rate[];
   onAddChild?: () => void;
 }) {
   const itemCount = visit.lines.reduce((sum, line) => sum + line.qty, 0);
@@ -2754,8 +2849,8 @@ function PayRail({
           <b>{visit.phone.length === 8 ? formatPhone(visit.phone) : visit.code}</b>
         </p>
         {visit.childCount > 0 || visit.blocks.length > 0 ? (
-          <div className="flex items-center justify-between gap-2">
-            <p className="cash-hint">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="cash-hint mr-auto">
               {visit.childCount} {visit.childCount === 1 ? "child" : "children"}
               {visit.tableNo ? ` · ${tableLabel(visit.tableNo)}` : ""}
             </p>
@@ -2764,14 +2859,27 @@ function PayRail({
                 + Child
               </button>
             ) : null}
+            <button type="button" className="cash-time-key h-8 min-h-8 w-auto px-3" onClick={onReprint}>
+              Reprint QR
+            </button>
           </div>
         ) : null}
         <p className="cash-hint">Came {formatClock(visit.createdAt)}</p>
         {visit.receiptNo ? <p className="cash-hint">Receipt {visit.receiptNo}</p> : null}
         {visit.leftAt ? (
-          <p className="cash-hint">Left. The clock is stopped. Pay when they are ready.</p>
+          <p className="cash-hint">Left. The clock is stopped. Extend to keep playing, or pay when they are ready.</p>
         ) : visit.blocks.length > 0 ? (
           <BarTimer end={visit.paidUntil} spanMin={playSpanMinutes(visit.blocks)} until={formatWhen(visit.paidUntil)} />
+        ) : null}
+        {visit.blocks.length > 0 && rates.length ? (
+          <div className="grid gap-2">
+            <p className="cash-hint">Extend</p>
+            {rates.map((rate) => (
+              <button key={rate.minutes} type="button" className="cash-time-key" onClick={() => onExtend(rate.minutes)}>
+                +{rate.minutes} min · {formatNu(rate.amountNu)}
+              </button>
+            ))}
+          </div>
         ) : null}
         <hr className="cash-receipt-rule" />
         <p className="cash-receipt-row">
