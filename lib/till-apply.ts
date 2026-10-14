@@ -21,7 +21,7 @@ import {
   deliverKot,
   searchVisit,
   settleVisit,
-  startUnpaidPlay,
+  payFirstPlay,
   voidLineTo,
   voidVisit,
   waiveOvertime,
@@ -183,12 +183,22 @@ async function runOp(op: TillOp, session: Session): Promise<VisitView> {
   }
   if (op.kind === "addPlay") {
     const existing = await visitByKey(op.visitKey);
-    const phone = (op.phone ?? "").replace(/\D/g, "");
-    if (!existing) {
-      if (phone.length !== 8) throw new Error("That bill is not on the till yet.");
-      return startUnpaidPlay({ phone, minutes: op.minutes, code: op.code, clientKey: op.visitKey });
-    }
-    return addPlayBlock(existing.id, op.minutes, op.phone ? phone : "");
+    if (!existing) throw new Error("Pay for the first play time before the clock starts.");
+    return addPlayBlock(existing.id, op.minutes, op.phone ?? "");
+  }
+  if (op.kind === "payPlay") {
+    const existing = await visitByKey(op.visitKey);
+    if (!existing) throw new Error("That bill is not on the till yet.");
+    return payFirstPlay(existing.id, {
+      minutes: op.minutes,
+      phone: op.phone,
+      childCount: op.childCount,
+      method: op.method,
+      journal: op.journal,
+      payBank: op.payBank,
+      cashNu: op.cashNu,
+      bankNu: op.bankNu,
+    });
   }
   const visit = await visitByKey(op.visitKey);
   if (!visit) throw new Error("That bill is not on the till yet.");

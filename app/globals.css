@@ -2470,6 +2470,14 @@
   box-shadow: none;
 }
 
+[data-touch="cashier"] .cash-paper[data-keys="1"] {
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+
+[data-touch="cashier"] .cash-paper[data-keys="1"] [data-rail-key][aria-pressed="true"] {
+  box-shadow: 0 0 0 2px var(--background), 0 0 0 4px var(--ring);
+}
+
 @media (min-width: 1024px) {
   [data-touch="cashier"] .cash-stage {
     grid-template-columns: minmax(0, 1fr) 22rem;

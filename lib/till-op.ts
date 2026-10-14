@@ -30,6 +30,17 @@ export type TillOp = {
     }
   | { kind: "addChildren"; childCount: number }
   | { kind: "addPlay"; minutes: number; phone?: string; code?: string }
+  | {
+      kind: "payPlay";
+      minutes: number;
+      phone?: string;
+      childCount: number;
+      method: PayMethod;
+      journal: string;
+      payBank: string;
+      cashNu?: number;
+      bankNu?: number;
+    }
   | { kind: "removePlay" }
   | { kind: "holdPlay" }
   | { kind: "saveKot"; tableNo: string; lineKeys: string[] }
@@ -85,12 +96,8 @@ function applyOne(
   if (op.kind === "addItem" && !visits.some((visit) => visitKey(visit) === op.visitKey)) {
     return [...visits, walkIn(op, menu)];
   }
-  if (op.kind === "addPlay" && op.phone) {
-    const phone = op.phone.replace(/\D/g, "");
-    if (phone.length !== 8) throw new Error("Enter an 8-digit phone number.");
-    const clash = visits.find((visit) => visit.status === "open" && visit.phone === phone && visitKey(visit) !== op.visitKey);
-    if (clash) throw new Error(`This phone already has an open visit, ${clash.code}.`);
-    if (!visits.some((visit) => visitKey(visit) === op.visitKey)) return [...visits, freshPlay(op, rates)];
+  if (op.kind === "addPlay" && !visits.some((visit) => visitKey(visit) === op.visitKey)) {
+    throw new Error("Pay for the first play time before the clock starts.");
   }
   return visits.map((visit) => (visitKey(visit) === op.visitKey ? change(visit, op, menu, rates, extraPerMinNu, charges) : visit));
 }
@@ -116,6 +123,9 @@ function change(
     return cost({ ...visit, childCount: next });
   }
   if (op.kind === "addPlay") {
+    if (!visit.blocks.some((block) => block.paid)) {
+      throw new Error("Pay for the first play time before adding extra time.");
+    }
     const next = addPlay(visit, op.minutes, op.at, rates);
     const phone = op.phone?.replace(/\D/g, "") ?? "";
     if (!phone) return cost(next);
@@ -128,6 +138,7 @@ function change(
       },
     );
   }
+  if (op.kind === "payPlay") return cost(payFirstBlock(visit, op, rates));
   if (op.kind === "removePlay") return cost(removePlay(visit));
   if (op.kind === "holdPlay") {
     if (visit.childCount === 0 && visit.blocks.length === 0) throw new Error("This bill has no play time.");
@@ -183,6 +194,39 @@ function checkIn(op: Extract<TillOp, { kind: "checkIn" }>, rates: Rate[]): Visit
     receiptNo: null,
   };
   return price(visit, rates);
+}
+
+function payFirstBlock(visit: VisitView, op: Extract<TillOp, { kind: "payPlay" }>, rates: Rate[]): VisitView {
+  if (visit.blocks.some((block) => block.paid)) {
+    throw new Error("The first play time is already paid. Extra time is paid with the bill.");
+  }
+  const phone = (op.phone ?? visit.phone).replace(/\D/g, "");
+  if (phone.length !== 8) throw new Error("Enter an 8-digit phone number.");
+  const children = Math.min(12, Math.max(visit.childCount, Math.round(op.childCount) || 1));
+  const rate = rates.find((item) => item.minutes === op.minutes);
+  if (!rate) throw new Error("Choose a play time from the rate card.");
+  const paidUntil = addMinutes(op.at, rate.minutes);
+  return {
+    ...visit,
+    phone,
+    guardianName: visit.guardianName === "Walk-in" ? "" : visit.guardianName,
+    childCount: children,
+    paidUntil,
+    leftAt: null,
+    blocks: [
+      ...visit.blocks,
+      {
+        id: tempId(`${op.id}:play`),
+        minutes: rate.minutes,
+        amountNu: rate.amountNu,
+        paid: true,
+        priorUntil: op.at,
+        extendsTo: paidUntil,
+        createdAt: op.at,
+      },
+    ],
+    payments: [...visit.payments, ...money(tempId(`${op.id}:pay`), "playtime", rate.amountNu, op)],
+  };
 }
 
 function walkIn(op: Extract<TillOp, { kind: "addItem" }>, menu: MenuItem[]): VisitView {
@@ -260,45 +304,6 @@ function voidLine(visit: VisitView, key: string, nextQty: number): VisitView {
         : item,
     ),
   };
-}
-
-function freshPlay(op: Extract<TillOp, { kind: "addPlay" }>, rates: Rate[]): VisitView {
-  const phone = op.phone?.replace(/\D/g, "") ?? "";
-  const rate = rates.find((item) => item.minutes === op.minutes);
-  if (!rate) throw new Error("Choose a play time from the rate card.");
-  if (phone.length !== 8) throw new Error("Enter an 8-digit phone number.");
-  const paidUntil = addMinutes(op.at, rate.minutes);
-  const visit: VisitView = {
-    id: tempId(op.visitKey),
-    clientKey: op.visitKey,
-    code: op.code || "PLAY",
-    phone,
-    guardianName: "",
-    childCount: 1,
-    status: "open",
-    createdAt: op.at,
-    paidUntil,
-    leftAt: null,
-    closedAt: null,
-    tableNo: "",
-    blocks: [
-      {
-        id: tempId(`${op.visitKey}:play`),
-        minutes: rate.minutes,
-        amountNu: rate.amountNu,
-        paid: false,
-        priorUntil: op.at,
-        extendsTo: paidUntil,
-        createdAt: op.at,
-      },
-    ],
-    lines: [],
-    payments: [],
-    dueNu: rate.amountNu,
-    overtime: null,
-    receiptNo: null,
-  };
-  return price(visit, rates);
 }
 
 function addPlay(visit: VisitView, minutes: number, at: string, rates: Rate[]): VisitView {

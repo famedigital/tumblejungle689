@@ -602,45 +602,6 @@ export async function createVisit(input: {
   return (await getVisitById(visitId))!;
 }
 
-export async function startUnpaidPlay(input: {
-  phone: string;
-  minutes: number;
-  code?: string;
-  clientKey: string;
-}): Promise<VisitView> {
-  await ensureTillSync();
-  const phone = normalizePhone(input.phone);
-  if (!phone) throw new Error("Enter an 8-digit phone number.");
-  const existing = await findOpenByPhone(phone);
-  if (existing) throw new Error(`This phone already has an open visit, ${existing.code}.`);
-  const rate = await rateFor(input.minutes);
-  const created = nowIso();
-  const paidUntil = addMinutes(created, rate.minutes);
-  const visitId = await tx(async (database) => {
-    const guardian = await database.one<{ id: number }>("SELECT id FROM guardians WHERE phone = ?", [phone]);
-    const guardianId = guardian
-      ? guardian.id
-      : await database.insert("INSERT INTO guardians (phone, name, created_at) VALUES (?, '', ?)", [phone, created]);
-    const wanted = (input.code ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-    let code = wanted.length >= 4 ? wanted : shortCode();
-    while (await database.one("SELECT 1 FROM visits WHERE short_code = ?", [code])) code = shortCode();
-    const createdVisit = await database.insert(
-      `INSERT INTO visits (short_code, guardian_id, status, child_count, created_at, paid_until)
-       VALUES (?, ?, 'open', 1, ?, ?)`,
-      [code, guardianId, created, paidUntil],
-    );
-    await database.exec(
-      `INSERT INTO play_blocks
-       (visit_id, minutes, amount_nu, paid, prior_until, extends_to, created_at)
-       VALUES (?, ?, ?, 0, ?, ?, ?)`,
-      [createdVisit, rate.minutes, rate.amountNu, created, paidUntil, created],
-    );
-    return createdVisit;
-  });
-  await query().exec("UPDATE visits SET client_key = ? WHERE id = ? AND client_key IS NULL", [input.clientKey, visitId]);
-  return (await getVisitById(visitId))!;
-}
-
 async function requireOpen(visitId: number): Promise<VisitView> {
   const visit = await getVisitById(visitId);
   if (!visit) throw new Error("Visit not found.");
@@ -648,8 +609,70 @@ async function requireOpen(visitId: number): Promise<VisitView> {
   return visit;
 }
 
+export async function payFirstPlay(
+  visitId: number,
+  input: {
+    minutes: number;
+    phone?: string;
+    childCount: number;
+    method: PayMethod;
+    journal?: string;
+    payBank?: string;
+    cashNu?: number;
+    bankNu?: number;
+  },
+): Promise<VisitView> {
+  const visit = await requireOpen(visitId);
+  if (visit.blocks.some((block) => block.paid)) {
+    throw new Error("The first play time is already paid. Extra time is paid with the bill.");
+  }
+  const rate = await rateFor(input.minutes);
+  const children = Math.min(12, Math.max(visit.childCount, Math.round(input.childCount) || 1));
+  const created = nowIso();
+  const paidUntil = addMinutes(created, rate.minutes);
+  const cashNu = Math.round(input.cashNu ?? (input.method === "bank_qr" ? 0 : rate.amountNu));
+  const bankNu = Math.round(input.bankNu ?? (input.method === "bank_qr" ? rate.amountNu : 0));
+  if (cashNu < 0 || bankNu < 0 || cashNu + bankNu !== rate.amountNu) {
+    throw new Error("Cash and bank QR must add up to the play price.");
+  }
+  const phone = (input.phone ?? "").replace(/\D/g, "");
+  if (phone.length === 8 && visit.phone !== phone) {
+    const other = await findOpenByPhone(phone);
+    if (other && other.id !== visit.id) throw new Error(`This phone already has an open visit, ${other.code}.`);
+  }
+  await tx(async (database) => {
+    if (phone.length === 8 && visit.phone !== phone) {
+      const guardian = await database.one<{ id: number }>("SELECT id FROM guardians WHERE phone = ?", [phone]);
+      if (guardian) {
+        await database.exec("UPDATE visits SET guardian_id = ? WHERE id = ?", [guardian.id, visitId]);
+      } else if (visit.phone.startsWith("F")) {
+        await database.exec(
+          "UPDATE guardians SET phone = ?, name = CASE WHEN name = 'Walk-in' THEN '' ELSE name END WHERE id = (SELECT guardian_id FROM visits WHERE id = ?)",
+          [phone, visitId],
+        );
+      } else {
+        const guardianId = await database.insert("INSERT INTO guardians (phone, name, created_at) VALUES (?, '', ?)", [phone, created]);
+        await database.exec("UPDATE visits SET guardian_id = ? WHERE id = ?", [guardianId, visitId]);
+      }
+    }
+    await database.exec(
+      `INSERT INTO play_blocks
+       (visit_id, minutes, amount_nu, paid, prior_until, extends_to, created_at)
+       VALUES (?, ?, ?, 1, ?, ?, ?)`,
+      [visitId, rate.minutes, rate.amountNu, created, paidUntil, created],
+    );
+    await database.exec("UPDATE visits SET paid_until = ?, child_count = ?, left_at = NULL WHERE id = ?", [paidUntil, children, visitId]);
+    await recordPayment(database, visitId, "playtime", "cash", cashNu, "cashier");
+    await recordPayment(database, visitId, "playtime", "bank_qr", bankNu, "cashier", input.journal ?? "", input.payBank ?? "");
+  });
+  return (await getVisitById(visitId))!;
+}
+
 export async function addPlayBlock(visitId: number, minutes: number, phone = ""): Promise<VisitView> {
   const visit = await requireOpen(visitId);
+  if (!visit.blocks.some((block) => block.paid)) {
+    throw new Error("Pay for the first play time before adding extra time.");
+  }
   const rate = await rateFor(minutes);
   const digits = phone.replace(/\D/g, "");
   if (phone && digits.length !== 8) throw new Error("Enter an 8-digit phone number.");

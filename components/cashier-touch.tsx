@@ -234,6 +234,7 @@ export function CashierTouch({
   const tableRef = useRef<HTMLInputElement>(null);
   const saleRef = useRef<() => void>(() => {});
   const holdRef = useRef<() => void>(() => {});
+  const railKeysRef = useRef(false);
   const checkForm = useRef<HTMLFormElement>(null);
   const checkField = useRef<HTMLInputElement>(null);
   const [timeUpOpen, setTimeUpOpen] = useState(false);
@@ -248,6 +249,8 @@ export function CashierTouch({
   const [hits, setHits] = useState<VisitHit[]>([]);
   const [hitAt, setHitAt] = useState(0);
   const [paySheet, setPaySheet] = useState(false);
+  const [railKeys, setRailKeys] = useState(false);
+  const [railStart, setRailStart] = useState<"top" | "play">("top");
   const [moreOpen, setMoreOpen] = useState(false);
   const layout = useTillLayout();
   const phone = layout === "phone";
@@ -431,6 +434,15 @@ export function CashierTouch({
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
+      if (event.type === "keydown" && railKeysRef.current) {
+        if ((event.key === "Escape" || event.key === "ArrowLeft") && !event.repeat) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          setRailKeys(false);
+          return;
+        }
+        if (event.key === "ArrowUp" || event.key === "ArrowDown" || event.key === "ArrowRight" || event.key === "Enter") return;
+      }
       if (event.type === "keydown" && event.key === "F7") {
         event.preventDefault();
         setMenuOpen(false);
@@ -463,7 +475,7 @@ export function CashierTouch({
         }
         return;
       }
-      const menuKey = event.key === "F10" || event.key === "F8" || ["¬", "ﬂ", "Ò", "ł"].includes(event.key);
+      const menuKey = event.key === "F10" || event.key === "F8";
       if (menuKey && !event.metaKey && !event.ctrlKey && !event.altKey) {
         event.preventDefault();
         setPeopleOpen(false);
@@ -500,6 +512,13 @@ export function CashierTouch({
         const card = document.querySelector<HTMLButtonElement>(`[data-board-card="${ranked[next].item.id}"]`);
         card?.focus();
         card?.scrollIntoView({ block: "nearest" });
+        return;
+      }
+      if (!typing && !check && !menuOpen && !recentOpen && !peopleOpen && !timeUpOpen && !askTable && !tender && event.key === "ArrowRight" && openVisit && tab !== "playing") {
+        event.preventDefault();
+        setPaySheet(true);
+        setRailStart("top");
+        setRailKeys(true);
         return;
       }
       if (!typing && !check && !menuOpen && !recentOpen && !peopleOpen && !timeUpOpen && !askTable && !tender && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
@@ -662,7 +681,13 @@ export function CashierTouch({
       submitOpenTender();
       return;
     }
-    if (!openVisit) return;
+    const highlighted = tab === "playing" ? ranked[Math.min(boardAt, Math.max(ranked.length - 1, 0))]?.item : undefined;
+    const target = openVisit ?? highlighted;
+    if (!target) return;
+    if (!openVisit) {
+      book.openBill(target.code);
+      setTab(target.code);
+    }
     if (askTable) {
       confirmTable();
       return;
@@ -670,27 +695,28 @@ export function CashierTouch({
     setMenuOpen(false);
     setPeopleOpen(false);
     setRecentOpen(false);
-    if ((openVisit.childCount > 0 || openVisit.blocks.length > 0) && !openVisit.leftAt) {
+    if ((target.childCount > 0 || target.blocks.length > 0) && !target.leftAt) {
       book.commit({
         id: crypto.randomUUID(),
         at: new Date().toISOString(),
         kind: "holdPlay",
-        visitKey: visitKey(openVisit),
+        visitKey: visitKey(target),
       });
       return;
     }
-    if (unsentFood(openVisit).length) {
+    if (unsentFood(target).length) {
       setTableError("");
       setAskTable(true);
       return;
     }
-    if (due > 0) openTender();
-    else if (!overtime && (openVisit.childCount > 0 || openVisit.blocks.length > 0)) {
+    const owing = openVisit ? due : target.dueNu;
+    if (owing > 0) openTender();
+    else if (!target.overtime && (target.childCount > 0 || target.blocks.length > 0)) {
       book.commit({
         id: crypto.randomUUID(),
         at: new Date().toISOString(),
         kind: "leave",
-        visitKey: visitKey(openVisit),
+        visitKey: visitKey(target),
       });
     }
   }
@@ -733,10 +759,51 @@ export function CashierTouch({
     setTimeUpOpen(false);
     setMoreOpen(false);
     setPaySheet(false);
+    setRailKeys(false);
     setAskTable(false);
     setTender(null);
     const minutes = rates.find((rate) => rate.minutes === 30)?.minutes ?? rates[0]?.minutes ?? 30;
     setCheck(freshCheck(minutes));
+  }
+
+  function beginPaidPlay(minutes: number, phone: string, visit: VisitView | null) {
+    setMenuOpen(false);
+    setPeopleOpen(false);
+    setRecentOpen(false);
+    setTimeUpOpen(false);
+    setMoreOpen(false);
+    setPaySheet(false);
+    setRailKeys(false);
+    setAskTable(false);
+    setTender(null);
+    const digits = phone.replace(/\D/g, "");
+    setCheck({
+      step: visit ? "pay" : "children",
+      kind: "play",
+      minutes,
+      phone: digits.length === 8 ? digits : "",
+      children: String(Math.max(1, visit?.childCount || 1)),
+      method: "bank_qr",
+      journal: "",
+      bank: "",
+      addToId: visit?.id,
+      addToCode: visit?.code,
+      addToCount: visit?.childCount,
+    });
+  }
+
+  function extendPlay(visit: VisitView, minutes: number) {
+    if (visit.blocks.some((block) => block.paid)) {
+      book.commit({
+        id: crypto.randomUUID(),
+        at: new Date().toISOString(),
+        kind: "addPlay",
+        visitKey: visitKey(visit),
+        minutes,
+      });
+      return;
+    }
+    beginPaidPlay(minutes, visit.phone, visit);
   }
 
   function openScanned(raw: string) {
@@ -814,6 +881,7 @@ export function CashierTouch({
     setTimeUpOpen(false);
     setMoreOpen(false);
     setPaySheet(false);
+    setRailKeys(false);
     setCounterClear(false);
     book.setSelectedCode("");
     setTab("playing");
@@ -831,6 +899,7 @@ export function CashierTouch({
     setMenuOpen(false);
     setMoreOpen(false);
     setPaySheet(false);
+    setRailKeys(false);
     setHits([]);
     setScanText("");
     setTab("playing");
@@ -840,6 +909,7 @@ export function CashierTouch({
     if (focused instanceof HTMLElement) focused.blur();
   }
   holdRef.current = holdCounter;
+  railKeysRef.current = railKeys;
 
   function showFloor() {
     setCheck(null);
@@ -849,6 +919,7 @@ export function CashierTouch({
     setTimeUpOpen(false);
     setMoreOpen(false);
     setPaySheet(false);
+    setRailKeys(false);
     setTab("playing");
   }
 
@@ -1406,6 +1477,8 @@ export function CashierTouch({
                       book.openBill(item.code);
                       setTab(item.code);
                       setPaySheet(true);
+                      setRailStart("play");
+                      setRailKeys(true);
                     }}
                   />
                 </TabsContent>
@@ -1426,6 +1499,28 @@ export function CashierTouch({
               onWalkIn={beginWalkIn}
               onCheckIn={(draft) => {
                 if (!playRate) return;
+                if (draft.addToId) {
+                  const match = open.find((item) => item.id === draft.addToId);
+                  if (!match) return;
+                  const saved = book.commit({
+                    id: crypto.randomUUID(),
+                    at: new Date().toISOString(),
+                    kind: "payPlay",
+                    visitKey: visitKey(match),
+                    minutes: draft.minutes || playRate.minutes,
+                    phone: draft.phone,
+                    childCount: Math.max(1, Number(draft.children) || match.childCount || 1),
+                    method: draft.method,
+                    journal: draft.journal,
+                    payBank: draft.bank || bankFromJournal(draft.journal),
+                  });
+                  if (!saved) return;
+                  setCheck(null);
+                  setLocalPack(true);
+                  book.openBill(match.code);
+                  setTab("playing");
+                  return;
+                }
                 const code = localCode();
                 const saved = book.commit({
                   id: crypto.randomUUID(),
@@ -1445,7 +1540,7 @@ export function CashierTouch({
                 setCheck(null);
                 setLocalPack(true);
                 book.openBill(code);
-                setTab(code);
+                setTab("playing");
               }}
               onAdd={(draft) => {
                 const match = open.find((item) => item.id === draft.addToId);
@@ -1476,23 +1571,20 @@ export function CashierTouch({
               tableRef={tableRef}
               tableError={tableError}
               spots={tableSpots(open)}
-              onClose={() => setPaySheet(false)}
+              onClose={() => {
+                setPaySheet(false);
+                setRailKeys(false);
+              }}
               onTable={(value) => {
                 setTableError("");
                 setTableNo(value);
               }}
               onSale={() => saleRef.current()}
               onReprint={() => reprintQr(openVisit.code)}
-              onExtend={(minutes) =>
-                book.commit({
-                  id: crypto.randomUUID(),
-                  at: new Date().toISOString(),
-                  kind: "addPlay",
-                  visitKey: visitKey(openVisit),
-                  minutes,
-                })
-              }
+              onExtend={(minutes) => extendPlay(openVisit, minutes)}
               rates={playRates}
+              keyed={railKeys}
+              start={railStart}
               onAddChild={
                 openVisit.childCount < 12
                   ? () =>
@@ -1576,15 +1668,7 @@ export function CashierTouch({
                   key={rate.minutes}
                   type="button"
                   className="tshong-fkey"
-                  onClick={() =>
-                    book.commit({
-                      id: crypto.randomUUID(),
-                      at: new Date().toISOString(),
-                      kind: "addPlay",
-                      visitKey: visitKey(openVisit),
-                      minutes: rate.minutes,
-                    })
-                  }
+                  onClick={() => extendPlay(openVisit, rate.minutes)}
                 >
                   <small>+{rate.minutes}</small>
                   <span>{formatNu(rate.amountNu)}</span>
@@ -1836,24 +1920,19 @@ export function CashierTouch({
             onPlay={(minutes, phone) => {
               const digits = phone.replace(/\D/g, "");
               if (digits.length !== 8) return;
-              const key = openVisit ? visitKey(openVisit) : crypto.randomUUID();
-              const code = openVisit ? openVisit.code : localCode();
-              const saved = book.commit({
-                id: crypto.randomUUID(),
-                at: new Date().toISOString(),
-                kind: "addPlay",
-                visitKey: key,
-                minutes,
-                phone: digits,
-                code,
-              });
-              if (!saved) return;
-              if (!openVisit) {
-                book.openBill(code);
-                setTab("playing");
+              if (openVisit?.blocks.some((block) => block.paid)) {
+                const saved = book.commit({
+                  id: crypto.randomUUID(),
+                  at: new Date().toISOString(),
+                  kind: "addPlay",
+                  visitKey: visitKey(openVisit),
+                  minutes,
+                });
+                if (!saved) return;
+                setMenuOpen(false);
+                return;
               }
-              setLocalPack(true);
-              setMenuOpen(false);
+              beginPaidPlay(minutes, digits, openVisit);
             }}
             onAdd={(item) => {
               const lineKey = crypto.randomUUID();
@@ -2084,7 +2163,7 @@ function BillTab({
       if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
       if (voiding) return;
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
-      if (document.querySelector("[data-till-tender], [aria-label='Menu']")) return;
+      if (document.querySelector("[data-till-tender], [aria-label='Menu'], [data-keys='1']")) return;
       if (!rows.length) return;
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
@@ -2396,6 +2475,7 @@ function CheckInSheet({
             onChange({ ...draft, step: "phone" });
             return;
           }
+          if (draft.step === "phone" || draft.step === "children" || draft.step === "pay") return;
           if (adding) onAdd(draft);
           else onCheckIn(draft);
         }}
@@ -2477,7 +2557,13 @@ function CheckInSheet({
               onChange={(event) => onChange({ ...draft, children: event.target.value.replace(/\D/g, "").slice(0, 2) })}
             />
           ) : null}
-          {draft.step === "pay" ? <p className="cash-hint">Enter types the journal number. C is cash.</p> : null}
+          {draft.step === "pay" ? (
+            <p className="cash-hint">
+              {draft.kind === "play"
+                ? "The first play time is paid now. Extra time is paid later with the bill. Enter types the journal number. C is cash."
+                : "Enter types the journal number. C is cash."}
+            </p>
+          ) : null}
           {draft.step === "journal" ? (
             <input
               ref={fieldRef}
@@ -2675,7 +2761,7 @@ function MenuSheet({
         {dish ? null : pane === "food" ? (
           <input autoFocus value={find} onChange={(event) => setFind(event.target.value)} placeholder="Find a dish" aria-label="Find a dish" className="cash-find" />
         ) : phoneFor != null ? (
-          <p className="cash-hint">Type the 8-digit mobile. Enter starts the {phoneFor} min timer and prints the QR.</p>
+          <p className="cash-hint">Type the 8-digit mobile. Enter takes payment. The first play time is paid before the clock starts.</p>
         ) : (
           <p className="cash-hint">Left and right switch. Up and down choose the time. Enter asks for the mobile number.</p>
         )}
@@ -2791,6 +2877,36 @@ function tableSpots(open: VisitView[]): { name: string; full: boolean }[] {
   });
 }
 
+function railReceipt(rail: HTMLElement | null) {
+  const receipt = rail?.querySelector(".cash-receipt");
+  return receipt instanceof HTMLElement ? receipt : null;
+}
+
+function railFocusAt(receipt: HTMLElement, buttons: HTMLButtonElement[], scrollTop: number) {
+  const max = Math.max(0, receipt.scrollHeight - receipt.clientHeight);
+  const pay = buttons.findIndex((button) => button.dataset.railKey === "go");
+  if (pay >= 0 && scrollTop >= max - 8) return pay;
+  const shift = scrollTop - receipt.scrollTop;
+  const boxTop = receipt.getBoundingClientRect().top;
+  const boxBottom = boxTop + receipt.clientHeight;
+  let best = -1;
+  let bestDist = Infinity;
+  buttons.forEach((button, index) => {
+    if (button.dataset.railKey === "go") return;
+    const rect = button.getBoundingClientRect();
+    const top = rect.top - shift;
+    if (top + rect.height < boxTop + 8 || top > boxBottom - 8) return;
+    const dist = Math.abs(top - (boxTop + 20));
+    if (dist < bestDist) {
+      best = index;
+      bestDist = dist;
+    }
+  });
+  if (best >= 0) return best;
+  const last = buttons.findLastIndex((button) => button.dataset.railKey !== "go");
+  return Math.max(0, last);
+}
+
 function PayRail({
   venueName,
   visit,
@@ -2808,6 +2924,8 @@ function PayRail({
   onReprint,
   onExtend,
   rates,
+  keyed,
+  start,
   onAddChild,
 }: {
   venueName: string;
@@ -2826,14 +2944,73 @@ function PayRail({
   onReprint: () => void;
   onExtend: (minutes: number) => void;
   rates: Rate[];
+  keyed: boolean;
+  start: "top" | "play";
   onAddChild?: () => void;
 }) {
+  const railRef = useRef<HTMLElement>(null);
+  const [at, setAt] = useState(0);
   const itemCount = visit.lines.reduce((sum, line) => sum + line.qty, 0);
   const cafeNu = visit.lines.filter((line) => line.outlet === "cafe" && !line.paid).reduce((sum, line) => sum + line.amountNu, 0);
   const kitchenNu = visit.lines.filter((line) => line.outlet === "restaurant" && !line.paid).reduce((sum, line) => sum + line.amountNu, 0);
   const playNu = visit.blocks.filter((block) => !block.paid).reduce((sum, block) => sum + block.amountNu, 0);
+  const showGo = due > 0 || askTable || ((visit.childCount > 0 || visit.blocks.length > 0) && !visit.leftAt && !overtime);
+  useEffect(() => {
+    if (!keyed) return;
+    const buttons = [...(railRef.current?.querySelectorAll<HTMLButtonElement>("[data-rail-key]") ?? [])];
+    if (start === "play") {
+      const extendAt = buttons.findIndex((button) => button.dataset.railKey?.startsWith("ext-"));
+      setAt(extendAt >= 0 ? extendAt : 0);
+      return;
+    }
+    setAt(0);
+  }, [keyed, start]);
+  useEffect(() => {
+    if (!keyed) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
+      if (event.repeat && event.key === "Enter") return;
+      const buttons = [...(railRef.current?.querySelectorAll<HTMLButtonElement>("[data-rail-key]") ?? [])];
+      if (!buttons.length) return;
+      if (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "ArrowRight") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const receipt = railReceipt(railRef.current);
+        const max = receipt ? Math.max(0, receipt.scrollHeight - receipt.clientHeight) : 0;
+        if (!receipt || max < 8) {
+          const step = event.key === "ArrowUp" ? -1 : 1;
+          setAt((index) => Math.min(buttons.length - 1, Math.max(0, index + step)));
+          return;
+        }
+        const pay = buttons.findIndex((button) => button.dataset.railKey === "go");
+        const down = event.key !== "ArrowUp";
+        if (down && receipt.scrollTop >= max - 8) {
+          if (pay >= 0) setAt(pay);
+          return;
+        }
+        if (!down && pay >= 0 && at === pay) {
+          const nextTop = Math.max(0, max - Math.round(receipt.clientHeight * 0.55));
+          receipt.scrollTop = nextTop;
+          setAt(railFocusAt(receipt, buttons, nextTop));
+          return;
+        }
+        const stepPx = Math.max(140, Math.round(receipt.clientHeight * 0.55));
+        const nextTop = Math.min(max, Math.max(0, receipt.scrollTop + (down ? stepPx : -stepPx)));
+        receipt.scrollTop = nextTop;
+        setAt(railFocusAt(receipt, buttons, nextTop));
+        return;
+      }
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      buttons[Math.min(at, buttons.length - 1)]?.click();
+    }
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [keyed, at]);
+  let keyIndex = 0;
   return (
-    <aside className="tshong-till-rail cash-paper">
+    <aside ref={railRef} className="tshong-till-rail cash-paper" data-keys={keyed ? "1" : "0"}>
       <div className="cash-receipt">
         <header className="cash-receipt-head">
           {onClose ? (
@@ -2844,6 +3021,11 @@ function PayRail({
           <strong>{venueName}</strong>
           <span>{visit.code}</span>
         </header>
+        {keyed ? (
+          <div className="flex justify-center">
+            <Badge variant="secondary">Arrows move · Enter · Esc</Badge>
+          </div>
+        ) : null}
         <p className="cash-receipt-row">
           <span>{visit.childCount === 0 && visit.blocks.length === 0 ? tableLabel(visit.tableNo) : visit.guardianName || "Guest"}</span>
           <b>{visit.phone.length === 8 ? formatPhone(visit.phone) : visit.code}</b>
@@ -2855,13 +3037,27 @@ function PayRail({
               {visit.tableNo ? ` · ${tableLabel(visit.tableNo)}` : ""}
             </p>
             {onAddChild ? (
-              <button type="button" className="cash-time-key h-8 min-h-8 w-auto px-3" onClick={onAddChild}>
+              <Button
+                type="button"
+                size="sm"
+                variant={keyed && at === keyIndex ? "default" : "outline"}
+                data-rail-key="child"
+                aria-pressed={keyed && at === keyIndex++}
+                onClick={onAddChild}
+              >
                 + Child
-              </button>
+              </Button>
             ) : null}
-            <button type="button" className="cash-time-key h-8 min-h-8 w-auto px-3" onClick={onReprint}>
+            <Button
+              type="button"
+              size="sm"
+              variant={keyed && at === keyIndex ? "default" : "outline"}
+              data-rail-key="reprint"
+              aria-pressed={keyed && at === keyIndex++}
+              onClick={onReprint}
+            >
               Reprint QR
-            </button>
+            </Button>
           </div>
         ) : null}
         <p className="cash-hint">Came {formatClock(visit.createdAt)}</p>
@@ -2873,12 +3069,24 @@ function PayRail({
         ) : null}
         {visit.blocks.length > 0 && rates.length ? (
           <div className="grid gap-2">
-            <p className="cash-hint">Extend</p>
-            {rates.map((rate) => (
-              <button key={rate.minutes} type="button" className="cash-time-key" onClick={() => onExtend(rate.minutes)}>
-                +{rate.minutes} min · {formatNu(rate.amountNu)}
-              </button>
-            ))}
+            <p className="cash-hint">{visit.blocks.some((block) => block.paid) ? "Extra time is paid with the bill." : "Pay the first play time before the clock starts."}</p>
+            {rates.map((rate) => {
+              const pressed = keyed && at === keyIndex;
+              return (
+                <Button
+                  key={rate.minutes}
+                  type="button"
+                  variant={pressed ? "default" : "outline"}
+                  className="h-11 w-full justify-between"
+                  data-rail-key={`ext-${rate.minutes}`}
+                  aria-pressed={keyed && at === keyIndex++}
+                  onClick={() => onExtend(rate.minutes)}
+                >
+                  <span>Extend +{rate.minutes} min</span>
+                  <span className="tabular-nums">{formatNu(rate.amountNu)}</span>
+                </Button>
+              );
+            })}
           </div>
         ) : null}
         <hr className="cash-receipt-rule" />
@@ -2962,9 +3170,9 @@ function PayRail({
           <p className="cash-hint">Finish stops the clock and holds the bill. Pay is separate, when they stop talking.</p>
         ) : null}
       </div>
-        {due > 0 || askTable || ((visit.childCount > 0 || visit.blocks.length > 0) && !visit.leftAt && !overtime) ? (
+        {showGo ? (
         <div className="cash-go">
-          <button type="button" className="cash-cash" onClick={onSale}>
+          <button type="button" data-rail-key="go" aria-pressed={keyed && at === keyIndex++} className="cash-cash" onClick={onSale}>
             {askTable
               ? "Print tickets"
               : (visit.childCount > 0 || visit.blocks.length > 0) && !visit.leftAt
