@@ -1133,6 +1133,23 @@
   gap: 0.45rem;
 }
 
+[data-touch="cashier"] .cash-find-sheet {
+  max-width: 28rem;
+  margin: 12vh auto 0;
+}
+
+[data-touch="cashier"] .cash-find-hits {
+  position: static;
+  z-index: auto;
+  top: auto;
+  left: auto;
+  right: auto;
+  margin-top: 0.5rem;
+  max-height: min(50vh, 22rem);
+  overflow: auto;
+  box-shadow: none;
+}
+
 [data-touch="cashier"] .till-hits {
   position: absolute;
   z-index: 40;
@@ -2479,12 +2496,20 @@
 }
 
 @media (min-width: 1024px) {
-  [data-touch="cashier"] .cash-stage {
+  [data-touch="cashier"] .cash-stage[data-rail="open"] {
     grid-template-columns: minmax(0, 1fr) 22rem;
   }
 
-  [data-touch="cashier"] .cash-pay-close {
+  [data-touch="cashier"] .cash-stage[data-rail="idle"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  [data-touch="cashier"] .cash-stage[data-rail="idle"] .cash-paper {
     display: none;
+  }
+
+  [data-touch="cashier"] .cash-pay-close {
+    display: inline-flex;
   }
 }
 

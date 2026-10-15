@@ -810,6 +810,35 @@ export async function voidVisit(visitId: number, actor: TillActor): Promise<Visi
   return (await getVisitById(visitId))!;
 }
 
+export async function settleComplimentary(visitId: number, actor: TillActor, receiptNo = 0): Promise<VisitView> {
+  const visit = await requireOpen(visitId);
+  const settings = await getSettings();
+  const quote = quoteOvertime(
+    visit.paidUntil,
+    settings.rates,
+    visit.leftAt ? new Date(visit.leftAt).getTime() : undefined,
+    settings.extraPerMinNu,
+  );
+  const foodDue = unpaidFood(visit);
+  const playDue = unpaidPlay(visit);
+  const charges = quoteCharges(foodDue + playDue + (quote?.amountNu ?? 0), chargeRatesOf(settings));
+  const due = charges.dueNu;
+  const closed = nowIso();
+  await tx(async (database) => {
+    await writeTillEvent(database, visit, actor, "comp", due, "Complimentary");
+    if (foodDue > 0) await database.exec("UPDATE tab_lines SET paid = 1 WHERE visit_id = ? AND paid = 0", [visitId]);
+    if (playDue > 0) await database.exec("UPDATE play_blocks SET paid = 1 WHERE visit_id = ? AND paid = 0", [visitId]);
+    if (quote && quote.amountNu > 0) await recordOvertime(database, visit, quote);
+    const number = await takeReceiptNo(database, receiptNo);
+    await database.exec("UPDATE visits SET receipt_no = ?, status = 'settled', closed_at = ? WHERE id = ?", [
+      number,
+      closed,
+      visitId,
+    ]);
+  });
+  return (await getVisitById(visitId))!;
+}
+
 export async function waiveOvertime(visitId: number, actor: TillActor): Promise<VisitView> {
   const visit = await requireOpen(visitId);
   if (!playIsOvertime(visit)) throw new Error("This play is not overtime.");

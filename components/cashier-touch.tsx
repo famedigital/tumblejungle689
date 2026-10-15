@@ -11,7 +11,7 @@ import { PlayPass } from "@/components/play-pass";
 import { PrintPortal } from "@/components/print-portal";
 import { HoldSheet } from "@/components/hold-sheet";
 import { KotSlip } from "@/components/kot-slip";
-import { GlowTimer, BarTimer, MiniRing, playSpanMinutes } from "@/components/live-timer";
+import { BarTimer, MiniRing, playSpanMinutes } from "@/components/live-timer";
 import { TimeUpSheet } from "@/components/timeup-sheet";
 import { RecentSheet } from "@/components/recent-sheet";
 import { Scanner } from "@/components/scanner";
@@ -252,6 +252,8 @@ export function CashierTouch({
   const [railKeys, setRailKeys] = useState(false);
   const [railStart, setRailStart] = useState<"top" | "play">("top");
   const [moreOpen, setMoreOpen] = useState(false);
+  const [findOpen, setFindOpen] = useState(false);
+  const findRef = useRef<HTMLInputElement>(null);
   const layout = useTillLayout();
   const phone = layout === "phone";
   const hitsRef = useRef(hits);
@@ -293,7 +295,7 @@ export function CashierTouch({
   const overdue = timeUp.length;
   const ending = ranked.filter((row) => !row.walkIn && !row.held && row.left >= 0 && row.left <= 5).length;
   const lookup = counterClear ? "" : (query ?? "").trim();
-  const status = error || ok || (check ? (check.step === "kind" ? "Left and right choose walk-in or play. Enter continues." : check.step === "time" ? "Up and down choose the play time. Enter continues." : "Enter moves on. Escape cancels.") : openVisit ? `${walkIn ? tableLabel(openVisit.tableNo) : formatPhone(openVisit.phone)} is on this till` : counterClear ? "Bill held. The counter is clear." : lookup ? `No open play card for ${lookup}` : "Alt+N asks walk-in or play. Scan a ticket to add food to that family.");
+  const status = error || ok || (check ? (check.step === "kind" ? "Left and right choose walk-in or play. Enter continues." : check.step === "time" ? "Up and down choose the play time. Enter continues." : "Enter moves on. Escape cancels.") : paySheet && openVisit ? `${walkIn ? tableLabel(openVisit.tableNo) : formatPhone(openVisit.phone)} is on this till` : counterClear ? "Bill held. The counter is clear." : lookup ? `No open play card for ${lookup}` : "Alt+N check-in · Alt+L order · Alt+H people · Ctrl+K find.");
   const extra = overtime ? overtimeSentence(overtime) : "";
   const poleRef = useRef<PolePayload | null>(null);
 
@@ -419,11 +421,17 @@ export function CashierTouch({
       setMenuOpen(false);
       setRecentOpen(false);
       setTimeUpOpen(false);
+      setFindOpen(false);
+      setPaySheet(false);
+      setCheck(null);
       setPeopleOpen((open) => !open);
       return;
     }
     if (letter === "l" && !recentOpen) {
       setPeopleOpen(false);
+      setFindOpen(false);
+      setPaySheet(false);
+      setCheck(null);
       setMenuOpen((open) => !open);
       return;
     }
@@ -433,7 +441,24 @@ export function CashierTouch({
   });
 
   useEffect(() => {
+    if (!findOpen) return;
+    const timer = window.setTimeout(() => findRef.current?.focus(), 0);
+    return () => window.clearTimeout(timer);
+  }, [findOpen]);
+
+  useEffect(() => {
     function onKey(event: KeyboardEvent) {
+      if (event.type === "keydown" && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        setFindOpen(true);
+        setMenuOpen(false);
+        setPeopleOpen(false);
+        setRecentOpen(false);
+        setTimeUpOpen(false);
+        setMoreOpen(false);
+        return;
+      }
       if (event.type === "keydown" && railKeysRef.current) {
         if ((event.key === "Escape" || event.key === "ArrowLeft") && !event.repeat) {
           event.preventDefault();
@@ -448,16 +473,30 @@ export function CashierTouch({
         setMenuOpen(false);
         setRecentOpen(false);
         setTimeUpOpen(false);
+        setFindOpen(false);
+        setPaySheet(false);
         setPeopleOpen((open) => !open);
         return;
       }
       if (event.type === "keydown" && event.key === "Escape" && !event.repeat) {
         event.preventDefault();
         event.stopImmediatePropagation();
+        if (findOpen) {
+          setFindOpen(false);
+          setHits([]);
+          setScanText("");
+          return;
+        }
+        if (paySheet) {
+          setPaySheet(false);
+          setRailKeys(false);
+          return;
+        }
         holdRef.current();
         return;
       }
       if (event.type !== "keydown" || event.repeat) return;
+      if (findOpen) return;
       if (event.key === "PageUp") {
         event.preventDefault();
         setPeopleOpen(false);
@@ -483,7 +522,7 @@ export function CashierTouch({
         return;
       }
       const typing = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
-      const onBoard = !typing && !check && !menuOpen && !recentOpen && !peopleOpen && !timeUpOpen && !askTable && !tender && tab === "playing" && ranked.length > 0;
+      const onBoard = !typing && !check && !menuOpen && !recentOpen && !peopleOpen && !timeUpOpen && !askTable && !tender && !findOpen && !paySheet && tab === "playing" && ranked.length > 0;
       if (onBoard && (event.key === "ArrowLeft" || event.key === "ArrowRight" || event.key === "ArrowUp" || event.key === "ArrowDown")) {
         event.preventDefault();
         const board = document.querySelector<HTMLElement>("[data-play-board]");
@@ -538,6 +577,11 @@ export function CashierTouch({
           event.preventDefault();
           setTab(current.item.code);
           book.openBill(current.item.code);
+          setCheck(null);
+          setMenuOpen(false);
+          setFindOpen(false);
+          setPaySheet(true);
+          setRailStart("top");
           return;
         }
         if (event.key.toLowerCase() === "w") {
@@ -560,7 +604,7 @@ export function CashierTouch({
       window.removeEventListener("keydown", onKey, true);
       window.removeEventListener("keyup", onKey, true);
     };
-  }, [tender, openVisit, recentOpen, recent, recentIndex, peopleOpen, timeUpOpen, askTable, check, menuOpen, ranked, boardAt, venueName, tab, tickets, book, markChat]);
+  }, [tender, openVisit, recentOpen, recent, recentIndex, peopleOpen, timeUpOpen, askTable, check, menuOpen, ranked, boardAt, venueName, tab, tickets, book, markChat, findOpen, paySheet]);
 
   useEffect(() => {
     if (!printTicket || !qr) return;
@@ -758,6 +802,7 @@ export function CashierTouch({
     setRecentOpen(false);
     setTimeUpOpen(false);
     setMoreOpen(false);
+    setFindOpen(false);
     setPaySheet(false);
     setRailKeys(false);
     setAskTable(false);
@@ -809,6 +854,7 @@ export function CashierTouch({
   function openScanned(raw: string) {
     setScanText("");
     setHits([]);
+    setFindOpen(false);
     void book.recall(raw).then((found) => {
       if (!found) return;
       if (found.status !== "open") {
@@ -821,9 +867,11 @@ export function CashierTouch({
       setPeopleOpen(false);
       setRecentOpen(false);
       setTimeUpOpen(false);
+      setMenuOpen(false);
       book.openBill(found.code);
       setTab(found.code);
-      setMenuOpen(true);
+      setPaySheet(true);
+      setRailStart("top");
     });
   }
 
@@ -880,6 +928,7 @@ export function CashierTouch({
     setRecentOpen(false);
     setTimeUpOpen(false);
     setMoreOpen(false);
+    setFindOpen(false);
     setPaySheet(false);
     setRailKeys(false);
     setCounterClear(false);
@@ -898,6 +947,7 @@ export function CashierTouch({
     setTimeUpOpen(false);
     setMenuOpen(false);
     setMoreOpen(false);
+    setFindOpen(false);
     setPaySheet(false);
     setRailKeys(false);
     setHits([]);
@@ -917,6 +967,7 @@ export function CashierTouch({
     setPeopleOpen(false);
     setRecentOpen(false);
     setTimeUpOpen(false);
+    setFindOpen(false);
     setMoreOpen(false);
     setPaySheet(false);
     setRailKeys(false);
@@ -1103,9 +1154,21 @@ export function CashierTouch({
   const paidCash = visit?.payments.filter((payment) => payment.method === "cash").reduce((sum, payment) => sum + payment.amountNu, 0) ?? 0;
   const paidBank = visit?.payments.filter((payment) => payment.method === "bank_qr").reduce((sum, payment) => sum + payment.amountNu, 0) ?? 0;
   const useTender = Boolean(tender) && paying > 0;
-  const receiptCash = useTender ? (tenderMethod === "bank_qr" ? 0 : tenderMethod === "split" ? Math.max(0, paying - scanNu) : paying) : paidCash;
-  const receiptBank = useTender ? (tenderMethod === "cash" ? 0 : tenderMethod === "split" ? Math.max(0, Math.min(scanNu, paying)) : paying) : paidBank;
-  const receiptTotal = useTender ? paying : paidCash + paidBank;
+  const receiptCash = useTender
+    ? tenderMethod === "comp" || tenderMethod === "bank_qr"
+      ? 0
+      : tenderMethod === "split"
+        ? Math.max(0, paying - scanNu)
+        : paying
+    : paidCash;
+  const receiptBank = useTender
+    ? tenderMethod === "comp" || tenderMethod === "cash"
+      ? 0
+      : tenderMethod === "split"
+        ? Math.max(0, Math.min(scanNu, paying))
+        : paying
+    : paidBank;
+  const receiptTotal = useTender ? (tenderMethod === "comp" ? 0 : paying) : paidCash + paidBank;
 
   return (
     <TillShell
@@ -1115,51 +1178,8 @@ export function CashierTouch({
       scanDefault={query}
       scanValue={scanText}
       onScanChange={setScanText}
-      onScanKeyDown={(event) => {
-        if (!hits.length) return;
-        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-          event.preventDefault();
-          const step = event.key === "ArrowDown" ? 1 : -1;
-          setHitAt((index) => (index + step + hits.length) % hits.length);
-        } else if (event.key === "Enter") {
-          event.preventDefault();
-          const hit = hits[Math.min(hitAt, hits.length - 1)];
-          if (hit) openHit(hit);
-        } else if (event.key === "Escape") {
-          setHits([]);
-        }
-      }}
-      scanExtra={
-        hits.length ? (
-          <ul className="till-hits" role="listbox" aria-label="Matching bills">
-            {hits.map((hit, index) => (
-              <li key={hit.code}>
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={index === hitAt}
-                  onMouseEnter={() => setHitAt(index)}
-                  onClick={() => openHit(hit)}
-                >
-                  <strong>
-                    {hit.phone.length === 8 ? formatPhone(hit.phone) : hit.code}
-                    <span>{hit.code}</span>
-                  </strong>
-                  <small>
-                    {hit.status === "open" ? "Open" : "Past"}
-                    {hit.childCount ? ` · ${hit.childCount} ${hit.childCount === 1 ? "child" : "children"}` : ""}
-                    {hit.tableNo ? ` · ${tableLabel(hit.tableNo)}` : ""}
-                    {hit.kotQty ? ` · KOT ${hit.kotQty}` : ""}
-                    {hit.botQty ? ` · BOT ${hit.botQty}` : ""}
-                    {hit.dueNu > 0 ? ` · ${formatNu(hit.dueNu)}` : ""}
-                    {` · ${formatClock(hit.createdAt)}`}
-                  </small>
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : null
-      }
+      hideScan
+      onOpenFind={() => setFindOpen(true)}
       onFind={openScanned}
       inputMode={phone ? "text" : "none"}
       scanPlaceholder="Phone or ticket"
@@ -1359,6 +1379,12 @@ export function CashierTouch({
                                 setBoardAt(index);
                                 setTab(row.item.code);
                                 book.openBill(row.item.code);
+                                setCheck(null);
+                                setMenuOpen(false);
+                                setPeopleOpen(false);
+                                setFindOpen(false);
+                                setPaySheet(true);
+                                setRailStart("top");
                               }}
                             />
                             <div className="pointer-events-none relative z-[1] flex h-full flex-col justify-between p-3">
@@ -1424,7 +1450,7 @@ export function CashierTouch({
                     })}
                   </ul>
                 ) : (
-                  <p className="cash-hint">No one is playing. Alt+N asks walk-in or play. Scan a ticket to add food to that family.</p>
+                  <p className="cash-hint">No one is playing. Alt+N check-in · Alt+L order · Alt+H people · Ctrl+K find.</p>
                 )}
               </TabsContent>
               {tickets.map((item) => (
@@ -1559,7 +1585,7 @@ export function CashierTouch({
                 setTab(match.code);
               }}
             />
-          ) : openVisit ? (
+          ) : paySheet && openVisit ? (
             <PayRail
               venueName={venueName}
               visit={openVisit}
@@ -1598,10 +1624,92 @@ export function CashierTouch({
                   : undefined
               }
             />
-          ) : (
-            <ChildSheet venueName={venueName} visit={counterClear ? null : (ranked[Math.min(boardAt, Math.max(0, ranked.length - 1))]?.item ?? null)} />
-          )}
+          ) : null}
         </div>
+        {findOpen ? (
+          <div
+            className="cash-scrim"
+            role="presentation"
+            onClick={() => {
+              setFindOpen(false);
+              setHits([]);
+              setScanText("");
+            }}
+          >
+            <div className="cash-sheet cash-find-sheet" role="dialog" aria-modal="true" aria-label="Find" onClick={(event) => event.stopPropagation()}>
+              <div className="cash-sheet-bar">
+                <p>Find · Ctrl+K</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFindOpen(false);
+                    setHits([]);
+                    setScanText("");
+                  }}
+                >
+                  Close
+                </button>
+              </div>
+              <input
+                ref={findRef}
+                value={scanText}
+                onChange={(event) => setScanText(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                    if (!hits.length) return;
+                    event.preventDefault();
+                    const step = event.key === "ArrowDown" ? 1 : -1;
+                    setHitAt((index) => (index + step + hits.length) % hits.length);
+                  } else if (event.key === "Enter") {
+                    event.preventDefault();
+                    const hit = hits[Math.min(hitAt, hits.length - 1)];
+                    if (hit) openHit(hit);
+                    else if (scanText.trim()) openScanned(scanText.trim());
+                  } else if (event.key === "Escape") {
+                    event.preventDefault();
+                    setFindOpen(false);
+                    setHits([]);
+                    setScanText("");
+                  }
+                }}
+                placeholder="Phone or ticket"
+                aria-label="Phone or ticket"
+                autoComplete="off"
+                inputMode={phone ? "text" : "none"}
+                className="cash-find"
+              />
+              {hits.length ? (
+                <ul className="till-hits cash-find-hits" role="listbox" aria-label="Matching bills">
+                  {hits.map((hit, index) => (
+                    <li key={hit.code}>
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={index === hitAt}
+                        onMouseEnter={() => setHitAt(index)}
+                        onClick={() => openHit(hit)}
+                      >
+                        <strong>
+                          {hit.phone.length === 8 ? formatPhone(hit.phone) : hit.code}
+                          <span>{hit.code}</span>
+                        </strong>
+                        <small>
+                          {hit.status === "open" ? "Open" : "Past"}
+                          {hit.childCount ? ` · ${hit.childCount} ${hit.childCount === 1 ? "child" : "children"}` : ""}
+                          {hit.tableNo ? ` · ${tableLabel(hit.tableNo)}` : ""}
+                          {hit.dueNu > 0 ? ` · ${formatNu(hit.dueNu)}` : ""}
+                          {` · ${formatClock(hit.createdAt)}`}
+                        </small>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="cash-hint">{scanText.trim() ? "No match yet." : "Type a phone or ticket code."}</p>
+              )}
+            </div>
+          </div>
+        ) : null}
         {visit && qr && (visit.childCount > 0 || visit.blocks.length > 0) ? (
           <PrintPortal>
             <div className="cash-print-source">
@@ -1970,7 +2078,8 @@ export function CashierTouch({
             action={(formData) => {
               if (!openVisit) return;
               const method = String(formData.get("method") ?? "bank_qr");
-              const pay = method === "cash" || method === "split" || method === "bank_qr" ? method : "bank_qr";
+              const pay =
+                method === "cash" || method === "split" || method === "bank_qr" || method === "comp" ? method : "bank_qr";
               const cashNu = Number(formData.get("cashNu") ?? 0);
               const bankNu = Number(formData.get("bankNu") ?? 0);
               const saved = book.commit({
@@ -1983,10 +2092,11 @@ export function CashierTouch({
                 payBank: String(formData.get("payBank") ?? ""),
                 cashNu,
                 bankNu,
+                secret: String(formData.get("secret") ?? ""),
               });
               if (!saved) return;
-              const cash = pay === "bank_qr" ? 0 : pay === "split" ? cashNu : due;
-              const bank = pay === "cash" ? 0 : pay === "split" ? bankNu : due;
+              const cash = pay === "comp" || pay === "bank_qr" ? 0 : pay === "split" ? cashNu : due;
+              const bank = pay === "comp" || pay === "cash" ? 0 : pay === "split" ? bankNu : due;
               setPaidSlip({
                 code: saved.code,
                 phone: saved.phone,
@@ -2008,10 +2118,11 @@ export function CashierTouch({
                     paid: true,
                   })),
                   ...chargeRows.map((row) => ({ name: row.name, qty: 1, amount: row.amount, paid: true })),
+                  ...(pay === "comp" ? [{ name: "Complimentary", qty: 1, amount: -due, paid: true }] : []),
                 ],
                 cash,
                 bank,
-                total: cash + bank,
+                total: pay === "comp" ? 0 : cash + bank,
                 receiptNo: saved.receiptNo,
               });
               setTender(null);
@@ -2023,6 +2134,7 @@ export function CashierTouch({
             staticPayload={staticPayload}
             note={tender.kind === "checkin" ? `Play ${tender.minutes}m` : `Bill ${openVisit?.code ?? ""}`}
             journalScan={journalScan}
+            allowComp={tender.kind === "settle"}
             bill={
               tender.kind === "settle" && openVisit
                 ? {
@@ -2363,8 +2475,8 @@ function LineVoid({
               onClose();
             }}
           >
-            <Field label="Manager PIN">
-              <Input name="secret" type="text" inputMode="numeric" autoComplete="off" autoCapitalize="off" spellCheck={false} autoFocus className="till-secret" />
+            <Field label="Owner PIN">
+              <Input name="secret" type="text" autoComplete="off" autoCapitalize="off" spellCheck={false} autoFocus className="till-secret" />
             </Field>
             <Button type="submit" variant="destructive">
               Void
@@ -2389,34 +2501,6 @@ function LineVoid({
         ) : null}
       </DialogContent>
     </Dialog>
-  );
-}
-
-function ChildSheet({ venueName, visit }: { venueName: string; visit: VisitView | null }) {
-  return (
-    <aside className="tshong-till-rail cash-paper">
-      <div className="cash-receipt">
-        <header className="cash-receipt-head">
-          <strong>{venueName}</strong>
-          <span>Playing</span>
-        </header>
-        <hr className="cash-receipt-rule" />
-        {visit ? (
-          <>
-            <p className="cash-receipt-row">
-              <span>{formatPhone(visit.phone)}</span>
-              <b>
-                {visit.childCount} {visit.childCount === 1 ? "child" : "children"}
-              </b>
-            </p>
-            <GlowTimer end={visit.paidUntil} spanMin={playSpanMinutes(visit.blocks)} />
-            <p className="cash-hint">Alt+L adds food on this play visit. Scan the ticket to open this same family.</p>
-          </>
-        ) : (
-          <p className="cash-hint">Alt+N asks walk-in or play. Play is paid first. Scan the ticket later to add food on that same visit.</p>
-        )}
-      </div>
-    </aside>
   );
 }
 

@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { formatNu, formatPhone, minutesLeft, tableLabel } from "@/lib/format";
+import { checkOwnerPin } from "@/lib/owner-pin";
 import type { VisitView } from "@/lib/types";
 import { canFloorDrop, canLeaveOnTime, isPlayVisit, playIsOvertime } from "@/lib/visit-rules";
 
@@ -298,11 +299,13 @@ function OvertimeGate({
   onRelease?: (visit: VisitView, choice: "waive" | "delete", secret: string) => unknown;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
+  const pinRef = useRef<HTMLInputElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   const [armed, setArmed] = useState(false);
   const [stamp, setStamp] = useState("");
   const [pinError, setPinError] = useState("");
+  const [busy, setBusy] = useState(false);
   const fired = visit?.lines.filter((line) => !line.paid && line.firedQty > 0) ?? [];
 
   useEffect(() => {
@@ -324,22 +327,32 @@ function OvertimeGate({
     };
   }, [armed]);
 
-  function release(choice: "waive" | "delete") {
+  async function release(next: "waive" | "delete") {
     const form = formRef.current;
-    if (!form || !visit) return;
+    if (!form || !visit || busy) return;
     const pin = String(new FormData(form).get("secret") ?? "").trim();
     if (!pin) {
-      setPinError("Enter the manager PIN.");
+      setPinError("Enter the owner PIN.");
+      pinRef.current?.focus();
       return;
     }
+    setBusy(true);
     setPinError("");
+    const failed = await checkOwnerPin(pin);
+    if (failed) {
+      setPinError(failed);
+      setBusy(false);
+      pinRef.current?.focus();
+      return;
+    }
     if (onRelease) {
-      const saved = onRelease(visit, choice, pin);
+      const saved = onRelease(visit, next, pin);
+      setBusy(false);
       if (saved == null) {
         setPinError("Could not void this bill.");
         return;
       }
-      if (choice === "delete" && fired.length > 0) {
+      if (next === "delete" && fired.length > 0) {
         setStamp(new Date().toISOString());
         setArmed(true);
         return;
@@ -348,19 +361,19 @@ function OvertimeGate({
       return;
     }
     const choiceInput = form.querySelector<HTMLInputElement>('input[name="choice"]');
-    if (choiceInput) choiceInput.value = choice;
+    if (choiceInput) choiceInput.value = next;
     form.requestSubmit();
   }
 
   return (
-    <Dialog open={visit != null} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={visit != null} onOpenChange={(open) => !open && !busy && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{mode === "over" ? "Play is overtime" : "Manager void"}</DialogTitle>
+          <DialogTitle>{mode === "over" ? "Play is overtime" : "Owner void"}</DialogTitle>
           <DialogDescription>
             {mode === "over"
-              ? "Take payment for the extra time, or a manager can make the overtime free or void the visit."
-              : "Take payment, or a manager can void this bill. Food already sent prints a cancel first."}
+              ? "Take payment for the extra time, or the owner can make the overtime free or void the visit."
+              : "Take payment, or the owner can void this bill. Food already sent prints a cancel first."}
           </DialogDescription>
         </DialogHeader>
         {visit ? (
@@ -381,26 +394,38 @@ function OvertimeGate({
               action={onRelease ? undefined : releaseHoldAction}
               className="grid gap-3"
               onSubmit={(event) => {
-                if (onRelease) event.preventDefault();
+                if (!onRelease) return;
+                event.preventDefault();
+                void release("delete");
               }}
             >
               <input type="hidden" name="visitId" value={visit.id} />
               <input type="hidden" name="code" value={visit.code} />
               <input type="hidden" name="back" value={desk} />
               <input type="hidden" name="choice" value="delete" />
-              <Field label="Manager PIN">
-                <Input name="secret" type="text" inputMode="numeric" autoComplete="off" autoCapitalize="off" spellCheck={false} autoFocus className="till-secret" />
+              <Field label="Owner PIN">
+                <Input
+                  ref={pinRef}
+                  name="secret"
+                  type="text"
+                  autoComplete="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  autoFocus
+                  className="till-secret"
+                  disabled={busy}
+                />
               </Field>
               {pinError ? <p className="text-sm text-destructive">{pinError}</p> : null}
               {armed ? <p className="text-sm text-muted-foreground">Bill voided. Printing the kitchen cancel.</p> : null}
               <div className="flex gap-2">
                 {mode === "over" ? (
-                  <Button type="button" variant="outline" className="flex-1" onClick={() => release("waive")}>
+                  <Button type="button" variant="outline" className="flex-1" disabled={busy} onClick={() => void release("waive")}>
                     Free of charge
                   </Button>
                 ) : null}
-                <Button type="button" variant="destructive" className="flex-1" onClick={() => release("delete")}>
-                  Void
+                <Button type="submit" variant="destructive" className="flex-1" disabled={busy}>
+                  {busy ? "Checking PIN…" : "Void"}
                 </Button>
               </div>
             </form>

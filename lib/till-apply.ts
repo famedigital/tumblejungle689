@@ -21,6 +21,7 @@ import {
   deliverKot,
   searchVisit,
   settleVisit,
+  settleComplimentary,
   payFirstPlay,
   voidLineTo,
   voidVisit,
@@ -221,11 +222,16 @@ async function runOp(op: TillOp, session: Session): Promise<VisitView> {
   if (op.kind === "cancel") return cancelHold(visit.id, { id: session.staffId, name: session.name });
   if (op.kind === "waive" || op.kind === "voidVisit" || op.kind === "voidLine") {
     const manager = await findStaffBySecret(op.secret);
-    if (!manager || manager.role !== "admin") throw new Error("Manager PIN was not recognised.");
+    if (!manager || manager.role !== "admin") throw new Error("Owner PIN was not recognised.");
     const actor = { id: manager.id, name: manager.name };
     if (op.kind === "waive") return waiveOvertime(visit.id, actor);
     if (op.kind === "voidVisit") return voidVisit(visit.id, actor);
     return voidLineTo(await lineId(visit.id, op.lineKey), op.nextQty, actor);
+  }
+  if (op.kind === "settle" && op.method === "comp") {
+    const manager = await findStaffBySecret(op.secret ?? "");
+    if (!manager || manager.role !== "admin") throw new Error("Owner PIN was not recognised.");
+    return settleComplimentary(visit.id, { id: manager.id, name: manager.name }, op.receiptNo);
   }
   const pay = payOf(op.method, op.cashNu, op.bankNu);
   return settleVisit(visit.id, pay, op.journal, op.payBank, op.receiptNo);

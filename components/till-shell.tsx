@@ -15,6 +15,8 @@ export function TillShell({
   scanExtra,
   scanPlaceholder = "Phone or ticket",
   inputMode,
+  hideScan = false,
+  onOpenFind,
   dueEyebrow,
   dueValue,
   dueHint,
@@ -37,6 +39,8 @@ export function TillShell({
   scanExtra?: ReactNode;
   scanPlaceholder?: string;
   inputMode?: "none" | "text" | "numeric";
+  hideScan?: boolean;
+  onOpenFind?: () => void;
   dueEyebrow: string;
   dueValue: string;
   dueHint: string;
@@ -62,7 +66,17 @@ export function TillShell({
 
   return (
     <div data-surface="till" data-touch={touch} className="relative flex min-h-dvh flex-col bg-background text-foreground">
-      <header className={`till-head border-b border-border bg-card px-3 py-2${tools ? " till-head-tools" : ""}${headClass ? ` ${headClass}` : ""}`}>
+      <header className={`till-head border-b border-border bg-card px-3 py-2${tools ? " till-head-tools" : ""}${headClass ? ` ${headClass}` : ""}${hideScan ? " till-head-noscan" : ""}`}>
+        {hideScan ? (
+          <div className="till-scan flex items-center gap-1.5">
+            {lead}
+            <Button type="button" variant="outline" className="h-10 min-w-0 flex-1 justify-start px-3 font-normal text-muted-foreground" onClick={onOpenFind}>
+              Find phone or ticket
+              <kbd className="ml-auto rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-muted-foreground">Ctrl+K</kbd>
+            </Button>
+            {scanExtra}
+          </div>
+        ) : (
         <form
           action={onFind ? undefined : scanAction}
           className="till-scan flex items-center gap-1.5"
@@ -96,6 +110,7 @@ export function TillShell({
           </Button>
           {scanExtra}
         </form>
+        )}
         <div className="till-beside">
           <p className={`till-status truncate text-sm ${statusBad ? "text-destructive" : "text-muted-foreground"}`}>{status}</p>
           {info}

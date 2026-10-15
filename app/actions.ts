@@ -187,7 +187,7 @@ export async function removeLineAction(formData: FormData) {
 
 async function requireManager(formData: FormData) {
   const staff = await findStaffBySecret(text(formData, "secret"));
-  if (!staff || staff.role !== "admin") throw new Error("Manager PIN was not recognised.");
+  if (!staff || staff.role !== "admin") throw new Error("Owner PIN was not recognised.");
   return staff;
 }
 

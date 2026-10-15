@@ -5,7 +5,7 @@ import type { MenuItem, Outlet, PayMethod, PaymentRow, Rate, TabLine, VisitView 
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-export type TillPay = "cash" | "bank_qr" | "split";
+export type TillPay = "cash" | "bank_qr" | "split" | "comp";
 
 export type TillOp = {
   id: string;
@@ -50,7 +50,16 @@ export type TillOp = {
   | { kind: "waive"; secret: string }
   | { kind: "voidVisit"; secret: string }
   | { kind: "voidLine"; lineKey: string; nextQty: number; secret: string }
-  | { kind: "settle"; method: TillPay; journal: string; payBank: string; cashNu?: number; bankNu?: number; receiptNo?: number }
+  | {
+      kind: "settle";
+      method: TillPay;
+      journal: string;
+      payBank: string;
+      cashNu?: number;
+      bankNu?: number;
+      receiptNo?: number;
+      secret?: string;
+    }
 );
 
 export function localCode(): string {
@@ -392,6 +401,7 @@ function money(
   amount: number,
   op: { at: string; method: PayMethod | TillPay; journal: string; payBank: string; cashNu?: number; bankNu?: number },
 ): PaymentRow[] {
+  if (op.method === "comp") return [];
   const cash = op.method === "bank_qr" ? 0 : op.method === "split" ? Math.round(op.cashNu ?? 0) : amount;
   const bank = op.method === "cash" ? 0 : op.method === "split" ? Math.round(op.bankNu ?? 0) : amount;
   const rows: PaymentRow[] = [];

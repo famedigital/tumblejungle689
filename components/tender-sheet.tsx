@@ -18,10 +18,11 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BankPick } from "@/components/bank-pick";
 import { formatNu, formatPhone, tableLabel } from "@/lib/format";
+import { checkOwnerPin } from "@/lib/owner-pin";
 import { bankFromJournal } from "@/lib/pay-banks";
 import { isPoleJournal, POLE_CHANNEL } from "@/lib/pole";
 
-export type TenderMethod = "cash" | "bank_qr" | "split";
+export type TenderMethod = "cash" | "bank_qr" | "split" | "comp";
 
 export function TenderSheet({
   action,
@@ -38,6 +39,7 @@ export function TenderSheet({
   journalScan = false,
   shop = "",
   account = "",
+  allowComp = false,
   children,
 }: {
   action: (formData: FormData) => void | Promise<void>;
@@ -54,20 +56,27 @@ export function TenderSheet({
   journalScan?: boolean;
   shop?: string;
   account?: string;
+  allowComp?: boolean;
   children?: ReactNode;
 }) {
   const [cashDraft, setCashDraft] = useState("");
   const [journal, setJournal] = useState("");
   const [payBank, setPayBank] = useState("");
+  const [compPin, setCompPin] = useState("");
+  const [pinError, setPinError] = useState("");
+  const [checking, setChecking] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const journalRef = useRef<HTMLInputElement>(null);
   const cashRef = useRef<HTMLInputElement>(null);
+  const pinRef = useRef<HTMLInputElement>(null);
+  const submitCompRef = useRef<() => void>(() => {});
   const cashNu = Math.max(0, Math.round(Number(cashDraft) || 0));
   const bankNu = method === "bank_qr" ? amountNu : method === "split" ? amountNu - cashNu : 0;
   const splitReady = method !== "split" || (cashNu > 0 && bankNu > 0 && cashNu + bankNu === amountNu);
   const journalReady = bankNu <= 0 || journal.trim().length > 0;
   const bankNamed = bankNu <= 0 || Boolean(payBank);
   const bankReady = (bankNu <= 0 || Boolean(staticPayload)) && journalReady && bankNamed;
+  const compReady = method !== "comp" || compPin.trim().length > 0;
   const title = bill?.walkIn
     ? tableLabel(bill.table)
     : customer && customer.phone.length === 8
@@ -92,7 +101,7 @@ export function TenderSheet({
       if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
         event.preventDefault();
         event.stopPropagation();
-        const methods: TenderMethod[] = ["bank_qr", "cash", "split"];
+        const methods: TenderMethod[] = allowComp ? ["bank_qr", "cash", "split", "comp"] : ["bank_qr", "cash", "split"];
         const index = Math.max(0, methods.indexOf(method));
         const step = event.key === "ArrowRight" ? 1 : -1;
         onMethod(methods[(index + step + methods.length) % methods.length]!);
@@ -100,6 +109,10 @@ export function TenderSheet({
       }
       if (event.key === "Enter") {
         event.preventDefault();
+        if (method === "comp") {
+          submitCompRef.current();
+          return;
+        }
         if (bankNu > 0 && !journal.trim()) {
           journalRef.current?.focus();
           return;
@@ -119,6 +132,9 @@ export function TenderSheet({
       } else if (key === "s" || key === "3") {
         event.preventDefault();
         onMethod("split");
+      } else if (allowComp && (key === "o" || key === "4")) {
+        event.preventDefault();
+        onMethod("comp");
       } else if (key === "p" && onPrint) {
         event.preventDefault();
         onPrint();
@@ -126,11 +142,13 @@ export function TenderSheet({
     }
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [method, onMethod, onPrint, bankNu, journal]);
+  }, [method, onMethod, onPrint, bankNu, journal, allowComp]);
 
   useEffect(() => {
     if (method === "bank_qr") journalRef.current?.focus();
     if (method === "split") cashRef.current?.focus();
+    if (method === "comp") pinRef.current?.focus();
+    setPinError("");
   }, [method]);
 
   useEffect(() => {
@@ -145,20 +163,62 @@ export function TenderSheet({
     return () => channel.close();
   }, [journalScan]);
 
+  async function submitComp() {
+    if (checking || amountNu <= 0) return;
+    const pin = pinRef.current?.value ?? compPin;
+    setChecking(true);
+    setPinError("");
+    const failed = await checkOwnerPin(pin);
+    setChecking(false);
+    if (failed) {
+      setPinError(failed);
+      pinRef.current?.focus();
+      return;
+    }
+    const form = formRef.current;
+    if (!form) return;
+    form.requestSubmit();
+  }
+  submitCompRef.current = () => {
+    void submitComp();
+  };
+
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="overflow-hidden sm:max-w-2xl" showCloseButton>
-        <form ref={formRef} action={action} data-till-tender="" className="grid items-start gap-4 sm:grid-cols-[minmax(0,1fr)_16.5rem]">
+        <form
+          ref={formRef}
+          action={action}
+          data-till-tender=""
+          className="grid items-start gap-4 sm:grid-cols-[minmax(0,1fr)_16.5rem]"
+          onSubmit={(event) => {
+            if (method !== "comp") return;
+            if (checking) {
+              event.preventDefault();
+              return;
+            }
+            if (!compPin.trim()) {
+              event.preventDefault();
+              setPinError("Enter the owner PIN.");
+              return;
+            }
+          }}
+        >
           {children}
           <input type="hidden" name="method" value={method} />
           <input type="hidden" name="cashNu" value={method === "split" ? cashNu : 0} />
           <input type="hidden" name="bankNu" value={method === "split" ? Math.max(0, bankNu) : 0} />
           <input type="hidden" name="journal" value={bankNu > 0 ? journal : ""} />
           <input type="hidden" name="payBank" value={bankNu > 0 ? payBank : ""} />
+          <input type="hidden" name="secret" value={method === "comp" ? compPin : ""} />
           <div className="grid content-start gap-3">
             <DialogHeader className="gap-0">
               <DialogTitle>Tender</DialogTitle>
-              <DialogDescription>Left and right change Bank, Cash, or Split. B, C, and S do the same. Enter types the journal number, then prints the receipt.</DialogDescription>
+              <DialogDescription>
+                {allowComp
+                  ? "Left and right change Bank, Cash, Split, or Comp. B, C, S, and O do the same. Enter confirms."
+                  : "Left and right change Bank, Cash, or Split. B, C, and S do the same. Enter confirms."}
+              </DialogDescription>
             </DialogHeader>
             <Card size="sm" className="gap-1">
               <CardHeader className="items-center">
@@ -174,10 +234,11 @@ export function TenderSheet({
               </CardHeader>
             </Card>
             <Tabs value={method} onValueChange={(value) => onMethod(value as TenderMethod)}>
-              <TabsList className="grid h-8 w-full grid-cols-3">
+              <TabsList className={`grid h-8 w-full ${allowComp ? "grid-cols-4" : "grid-cols-3"}`}>
                 <TabsTrigger value="bank_qr">Bank · B</TabsTrigger>
                 <TabsTrigger value="cash">Cash · C</TabsTrigger>
                 <TabsTrigger value="split">Split · S</TabsTrigger>
+                {allowComp ? <TabsTrigger value="comp">Comp · O</TabsTrigger> : null}
               </TabsList>
             </Tabs>
             {method === "split" ? (
@@ -194,6 +255,27 @@ export function TenderSheet({
               </Field>
             ) : null}
             {method === "cash" ? <p className="text-sm text-muted-foreground">Count the cash, then confirm.</p> : null}
+            {method === "comp" ? (
+              <>
+                <p className="text-sm text-muted-foreground">Closes this bill as complimentary. Needs the owner PIN.</p>
+                <Field label="Owner PIN">
+                  <Input
+                    ref={pinRef}
+                    name="compPin"
+                    value={compPin}
+                    onChange={(event) => {
+                      setCompPin(event.target.value);
+                      setPinError("");
+                    }}
+                    autoComplete="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
+                    className="till-secret h-9"
+                  />
+                </Field>
+                {pinError ? <Badge variant="destructive">{pinError}</Badge> : null}
+              </>
+            ) : null}
             {bankNu > 0 ? (
               <>
                 <Field label="Journal number" hint={journalScan ? "The customer screen can fill this. 126- is MBOB." : "From the bank SMS. 126- is MBOB."}>
@@ -217,18 +299,39 @@ export function TenderSheet({
             {bankNu > 0 && !journalReady ? <Badge variant="destructive">Type the journal number.</Badge> : null}
             {bankNu > 0 && journalReady && !payBank ? <Badge variant="destructive">Pick the bank.</Badge> : null}
             {method === "split" && !splitReady ? <Badge variant="destructive">Cash and bank must add up to the due.</Badge> : null}
-            <Confirm disabled={!bankReady || !splitReady || amountNu <= 0} bank={method === "bank_qr"}>
-              {method === "split" ? "Take split · Enter" : method === "cash" ? `Take cash ${formatNu(amountNu)} · Enter` : `Bank received ${formatNu(bankNu)} · Enter`}
-            </Confirm>
+            {method === "comp" ? (
+              <Button
+                type="button"
+                variant="secondary"
+                className="h-12 text-base"
+                disabled={checking || !compReady || amountNu <= 0}
+                onClick={() => void submitComp()}
+              >
+                {checking ? "Checking PIN…" : `Complimentary ${formatNu(amountNu)} · Enter`}
+              </Button>
+            ) : (
+              <Confirm disabled={!bankReady || !splitReady || amountNu <= 0} bank={method === "bank_qr"}>
+                {method === "split"
+                  ? "Take split · Enter"
+                  : method === "cash"
+                    ? `Take cash ${formatNu(amountNu)} · Enter`
+                    : `Bank received ${formatNu(bankNu)} · Enter`}
+              </Confirm>
+            )}
           </div>
           <aside className="flex flex-col items-center gap-2 rounded-xl bg-card px-3 pt-8 pb-3 text-center ring-1 ring-foreground/15">
-            {bankNu > 0 ? (
+            {method === "comp" ? (
+              <p className="text-sm font-medium text-muted-foreground">Complimentary</p>
+            ) : bankNu > 0 ? (
               <div className="rounded-xl bg-white p-2 shadow-sm ring-2 ring-neutral-950">
                 <PayQr staticPayload={staticPayload} amountNu={bankNu} note={note} strong showAmount={false} />
               </div>
             ) : null}
-            <p className="text-2xl font-medium tracking-tight text-primary tabular-nums">{formatNu(bankNu > 0 ? bankNu : amountNu)}</p>
-            {account ? <p className="font-mono text-xs break-all">{account}</p> : null}
+            <p className="text-2xl font-medium tracking-tight text-primary tabular-nums">
+              {formatNu(method === "comp" ? amountNu : bankNu > 0 ? bankNu : amountNu)}
+            </p>
+            {method === "comp" ? <p className="text-sm text-muted-foreground">No payment taken</p> : null}
+            {account && method !== "comp" ? <p className="font-mono text-xs break-all">{account}</p> : null}
             {shop ? <p className="text-sm font-medium">{shop}</p> : null}
           </aside>
         </form>
