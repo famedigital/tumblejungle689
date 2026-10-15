@@ -1980,11 +1980,31 @@
   right: 0;
   bottom: 0;
   display: flex;
-  width: 22.5rem;
+  width: min(24rem, 100%);
   flex-direction: column;
   overflow: hidden;
   background: #fff;
   box-shadow: -16px 0 40px rgb(42 18 72 / 18%);
+}
+
+[data-touch="cashier"] .cash-sheet-check .cash-sheet-bar {
+  background: var(--pine);
+  color: #f7f4ee;
+}
+
+[data-touch="cashier"] .cash-sheet-menu .cash-sheet-bar {
+  background: var(--saffron);
+  color: var(--saffron-ink);
+}
+
+[data-touch="cashier"] .cash-sheet-menu .cash-sheet-bar button {
+  border-color: color-mix(in srgb, var(--saffron-ink) 28%, transparent);
+  color: var(--saffron-ink);
+}
+
+[data-touch="cashier"] .cash-sheet-hold .cash-sheet-bar {
+  background: #1f5f8b;
+  color: #f4f8fc;
 }
 
 [data-touch="cashier"] .cash-menu-list {
@@ -2165,7 +2185,6 @@
 }
 
 [data-touch="cashier"] .hold-sheet {
-  width: min(36rem, 100%);
   overflow: hidden;
 }
 

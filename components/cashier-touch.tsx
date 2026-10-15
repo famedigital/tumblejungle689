@@ -21,6 +21,15 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardAction, CardDescription, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Command,
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -253,7 +262,6 @@ export function CashierTouch({
   const [railStart, setRailStart] = useState<"top" | "play">("top");
   const [moreOpen, setMoreOpen] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
-  const findRef = useRef<HTMLInputElement>(null);
   const layout = useTillLayout();
   const phone = layout === "phone";
   const hitsRef = useRef(hits);
@@ -439,12 +447,6 @@ export function CashierTouch({
     if (letter === "n") beginCheckIn();
     if (letter === "w") beginWalkIn();
   });
-
-  useEffect(() => {
-    if (!findOpen) return;
-    const timer = window.setTimeout(() => findRef.current?.focus(), 0);
-    return () => window.clearTimeout(timer);
-  }, [findOpen]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -1552,90 +1554,55 @@ export function CashierTouch({
             />
           ) : null}
         </div>
-        {findOpen ? (
-          <div
-            className="cash-scrim cash-scrim-center"
-            role="presentation"
-            onClick={() => {
-              setFindOpen(false);
+        <CommandDialog
+          open={findOpen}
+          onOpenChange={(open) => {
+            setFindOpen(open);
+            if (!open) {
               setHits([]);
               setScanText("");
-            }}
-          >
-            <div className="cash-sheet cash-find-sheet" role="dialog" aria-modal="true" aria-label="Find" onClick={(event) => event.stopPropagation()}>
-              <div className="cash-sheet-bar">
-                <p>Find · Ctrl+K</p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFindOpen(false);
-                    setHits([]);
-                    setScanText("");
-                  }}
-                >
-                  Close
-                </button>
-              </div>
-              <input
-                ref={findRef}
-                value={scanText}
-                onChange={(event) => setScanText(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-                    if (!hits.length) return;
-                    event.preventDefault();
-                    const step = event.key === "ArrowDown" ? 1 : -1;
-                    setHitAt((index) => (index + step + hits.length) % hits.length);
-                  } else if (event.key === "Enter") {
-                    event.preventDefault();
-                    const hit = hits[Math.min(hitAt, hits.length - 1)];
-                    if (hit) openHit(hit);
-                    else if (scanText.trim()) openScanned(scanText.trim());
-                  } else if (event.key === "Escape") {
-                    event.preventDefault();
-                    setFindOpen(false);
-                    setHits([]);
-                    setScanText("");
-                  }
-                }}
-                placeholder="Phone or ticket"
-                aria-label="Phone or ticket"
-                autoComplete="off"
-                inputMode={phone ? "text" : "none"}
-                className="cash-find"
-              />
+              setHitAt(0);
+            }
+          }}
+          title="Find"
+          description="Find a phone or ticket"
+          className="top-1/2 -translate-y-1/2 sm:max-w-lg"
+        >
+          <Command shouldFilter={false}>
+            <CommandInput placeholder="Phone or ticket…" value={scanText} onValueChange={setScanText} />
+            <CommandList>
+              <CommandEmpty>{scanText.trim() ? "No match yet." : "Type a phone or ticket code."}</CommandEmpty>
               {hits.length ? (
-                <ul className="till-hits cash-find-hits" role="listbox" aria-label="Matching bills">
-                  {hits.map((hit, index) => (
-                    <li key={hit.code}>
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected={index === hitAt}
-                        onMouseEnter={() => setHitAt(index)}
-                        onClick={() => openHit(hit)}
-                      >
-                        <strong>
-                          {hit.phone.length === 8 ? formatPhone(hit.phone) : hit.code}
-                          <span>{hit.code}</span>
-                        </strong>
-                        <small>
+                <CommandGroup heading="Bills">
+                  {hits.map((hit) => (
+                    <CommandItem key={hit.code} value={hit.code} onSelect={() => openHit(hit)}>
+                      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <span className="flex items-center justify-between gap-2 font-medium">
+                          <span className="truncate">{hit.phone.length === 8 ? formatPhone(hit.phone) : hit.code}</span>
+                          <span className="font-mono text-xs text-muted-foreground">{hit.code}</span>
+                        </span>
+                        <span className="truncate text-xs text-muted-foreground">
                           {hit.status === "open" ? "Open" : "Past"}
                           {hit.childCount ? ` · ${hit.childCount} ${hit.childCount === 1 ? "child" : "children"}` : ""}
                           {hit.tableNo ? ` · ${tableLabel(hit.tableNo)}` : ""}
                           {hit.dueNu > 0 ? ` · ${formatNu(hit.dueNu)}` : ""}
                           {` · ${formatClock(hit.createdAt)}`}
-                        </small>
-                      </button>
-                    </li>
+                        </span>
+                      </span>
+                    </CommandItem>
                   ))}
-                </ul>
-              ) : (
-                <p className="cash-hint">{scanText.trim() ? "No match yet." : "Type a phone or ticket code."}</p>
-              )}
-            </div>
-          </div>
-        ) : null}
+                </CommandGroup>
+              ) : null}
+              {scanText.trim() && !hits.some((hit) => hit.code === scanText.trim().toUpperCase()) ? (
+                <CommandGroup>
+                  <CommandItem value={`open:${scanText.trim()}`} onSelect={() => openScanned(scanText.trim())}>
+                    Open {scanText.trim()}
+                  </CommandItem>
+                </CommandGroup>
+              ) : null}
+            </CommandList>
+          </Command>
+        </CommandDialog>
         {visit && qr && (visit.childCount > 0 || visit.blocks.length > 0) ? (
           <PrintPortal>
             <div className="cash-print-source">
@@ -2546,7 +2513,7 @@ function CheckInSheet({
 
   return (
     <div className="cash-scrim" role="presentation" onClick={onClose}>
-      <div className="cash-sheet" role="dialog" aria-modal="true" aria-label="Check in" onClick={(event) => event.stopPropagation()}>
+      <div className="cash-sheet cash-sheet-check" role="dialog" aria-modal="true" aria-label="Check in" onClick={(event) => event.stopPropagation()}>
         <div className="cash-sheet-bar">
           <p>{adding ? "Add children" : draft.step === "kind" ? "New" : "Check in"}</p>
           <button type="button" onClick={onClose}>
@@ -2826,8 +2793,8 @@ function MenuSheet({
   }, [rows, at, pane, rates, playAt, onPlay, phoneFor, phone, knownPhone, dish, dishName, dishPrice, dishOutlet, dishPin, role, onCreate]);
 
   return (
-    <div className="cash-scrim cash-scrim-clear" role="presentation">
-      <div className="cash-sheet" role="dialog" aria-label="Menu" onClick={(event) => event.stopPropagation()}>
+    <div className="cash-scrim" role="presentation" onClick={onClose}>
+      <div className="cash-sheet cash-sheet-menu" role="dialog" aria-modal="true" aria-label="Menu" onClick={(event) => event.stopPropagation()}>
         <div className="cash-sheet-bar">
           <p>{pane === "play" ? "Play" : "Menu"}</p>
           <button type="button" onClick={onClose}>

@@ -140,7 +140,7 @@ export function HoldSheet({
 
   return (
     <div className="cash-scrim" role="presentation" onClick={onClose}>
-      <div className="cash-sheet hold-sheet" role="dialog" aria-modal="true" aria-label="People on hold" onClick={(event) => event.stopPropagation()}>
+      <div className="cash-sheet cash-sheet-hold hold-sheet" role="dialog" aria-modal="true" aria-label="People on hold" onClick={(event) => event.stopPropagation()}>
         <div className="cash-sheet-bar">
           <p>On hold · {visits.length}</p>
           <button type="button" onClick={onClose}>
