@@ -1323,7 +1323,7 @@ export function CashierTouch({
           </div>
         ) : null}
 
-        <div className="tshong-till-body cash-stage" data-rail={check || paySheet ? "open" : "idle"}>
+        <div className="tshong-till-body cash-stage" data-rail={paySheet ? "open" : "idle"}>
           <div className="tshong-till-ticket cash-list">
             <Tabs value={tab} onValueChange={setTab} className="cash-tabs min-h-0 flex-1">
               <TabsList variant="line" className="h-9 w-fit max-w-full justify-start gap-0 overflow-x-auto px-1">
@@ -1511,81 +1511,7 @@ export function CashierTouch({
               ))}
             </Tabs>
           </div>
-          {check ? (
-            <CheckInSheet
-              venueName={venueName}
-              draft={check}
-              rates={playRates}
-              rate={playRate}
-              staticPayload={staticPayload}
-              fieldRef={checkField}
-              formRef={checkForm}
-              onChange={setCheck}
-              onClose={() => setCheck(null)}
-              onWalkIn={beginWalkIn}
-              onCheckIn={(draft) => {
-                if (!playRate) return;
-                if (draft.addToId) {
-                  const match = open.find((item) => item.id === draft.addToId);
-                  if (!match) return;
-                  const saved = book.commit({
-                    id: crypto.randomUUID(),
-                    at: new Date().toISOString(),
-                    kind: "payPlay",
-                    visitKey: visitKey(match),
-                    minutes: draft.minutes || playRate.minutes,
-                    phone: draft.phone,
-                    childCount: Math.max(1, Number(draft.children) || match.childCount || 1),
-                    method: draft.method,
-                    journal: draft.journal,
-                    payBank: draft.bank || bankFromJournal(draft.journal),
-                  });
-                  if (!saved) return;
-                  setCheck(null);
-                  setLocalPack(true);
-                  book.openBill(match.code);
-                  setTab("playing");
-                  return;
-                }
-                const code = localCode();
-                const saved = book.commit({
-                  id: crypto.randomUUID(),
-                  at: new Date().toISOString(),
-                  kind: "checkIn",
-                  visitKey: crypto.randomUUID(),
-                  code,
-                  phone: draft.phone,
-                  name: "",
-                  childCount: Math.max(1, Number(draft.children) || 1),
-                  minutes: draft.minutes || playRate.minutes,
-                  method: draft.method,
-                  journal: draft.journal,
-                  payBank: draft.bank || bankFromJournal(draft.journal),
-                });
-                if (!saved) return;
-                setCheck(null);
-                setLocalPack(true);
-                book.openBill(code);
-                setTab("playing");
-              }}
-              onAdd={(draft) => {
-                const match = open.find((item) => item.id === draft.addToId);
-                if (!match) return;
-                const saved = book.commit({
-                  id: crypto.randomUUID(),
-                  at: new Date().toISOString(),
-                  kind: "addChildren",
-                  visitKey: visitKey(match),
-                  childCount: Math.max(1, Number(draft.children) || 1),
-                });
-                if (!saved) return;
-                setCheck(null);
-                setLocalPack(true);
-                book.openBill(match.code);
-                setTab(match.code);
-              }}
-            />
-          ) : paySheet && openVisit ? (
+          {paySheet && openVisit ? (
             <PayRail
               venueName={venueName}
               visit={openVisit}
@@ -1628,7 +1554,7 @@ export function CashierTouch({
         </div>
         {findOpen ? (
           <div
-            className="cash-scrim"
+            className="cash-scrim cash-scrim-center"
             role="presentation"
             onClick={() => {
               setFindOpen(false);
@@ -1932,6 +1858,81 @@ export function CashierTouch({
               </div>
             </div>
           </div>
+        ) : null}
+        {check ? (
+          <CheckInSheet
+            venueName={venueName}
+            draft={check}
+            rates={playRates}
+            rate={playRate}
+            staticPayload={staticPayload}
+            fieldRef={checkField}
+            formRef={checkForm}
+            onChange={setCheck}
+            onClose={() => setCheck(null)}
+            onWalkIn={beginWalkIn}
+            onCheckIn={(draft) => {
+              if (!playRate) return;
+              if (draft.addToId) {
+                const match = open.find((item) => item.id === draft.addToId);
+                if (!match) return;
+                const saved = book.commit({
+                  id: crypto.randomUUID(),
+                  at: new Date().toISOString(),
+                  kind: "payPlay",
+                  visitKey: visitKey(match),
+                  minutes: draft.minutes || playRate.minutes,
+                  phone: draft.phone,
+                  childCount: Math.max(1, Number(draft.children) || match.childCount || 1),
+                  method: draft.method,
+                  journal: draft.journal,
+                  payBank: draft.bank || bankFromJournal(draft.journal),
+                });
+                if (!saved) return;
+                setCheck(null);
+                setLocalPack(true);
+                book.openBill(match.code);
+                setTab("playing");
+                return;
+              }
+              const code = localCode();
+              const saved = book.commit({
+                id: crypto.randomUUID(),
+                at: new Date().toISOString(),
+                kind: "checkIn",
+                visitKey: crypto.randomUUID(),
+                code,
+                phone: draft.phone,
+                name: "",
+                childCount: Math.max(1, Number(draft.children) || 1),
+                minutes: draft.minutes || playRate.minutes,
+                method: draft.method,
+                journal: draft.journal,
+                payBank: draft.bank || bankFromJournal(draft.journal),
+              });
+              if (!saved) return;
+              setCheck(null);
+              setLocalPack(true);
+              book.openBill(code);
+              setTab("playing");
+            }}
+            onAdd={(draft) => {
+              const match = open.find((item) => item.id === draft.addToId);
+              if (!match) return;
+              const saved = book.commit({
+                id: crypto.randomUUID(),
+                at: new Date().toISOString(),
+                kind: "addChildren",
+                visitKey: visitKey(match),
+                childCount: Math.max(1, Number(draft.children) || 1),
+              });
+              if (!saved) return;
+              setCheck(null);
+              setLocalPack(true);
+              book.openBill(match.code);
+              setTab(match.code);
+            }}
+          />
         ) : null}
         {peopleOpen ? (
           <HoldSheet
@@ -2544,137 +2545,136 @@ function CheckInSheet({
   };
 
   return (
-    <aside className="tshong-till-rail cash-paper">
-      <form
-        ref={formRef}
-        className="cash-receipt"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (draft.step === "kind") {
-            if (draft.kind === "walkin") onWalkIn();
-            else onChange({ ...draft, step: "time" });
-            return;
-          }
-          if (draft.step === "time") {
-            onChange({ ...draft, step: "phone" });
-            return;
-          }
-          if (draft.step === "phone" || draft.step === "children" || draft.step === "pay") return;
-          if (adding) onAdd(draft);
-          else onCheckIn(draft);
-        }}
-      >
-        <header className="cash-receipt-head">
-          <button type="button" className="cash-rail-close" onClick={onClose}>
+    <div className="cash-scrim" role="presentation" onClick={onClose}>
+      <div className="cash-sheet" role="dialog" aria-modal="true" aria-label="Check in" onClick={(event) => event.stopPropagation()}>
+        <div className="cash-sheet-bar">
+          <p>{adding ? "Add children" : draft.step === "kind" ? "New" : "Check in"}</p>
+          <button type="button" onClick={onClose}>
             Close
           </button>
-          <strong>{venueName}</strong>
-          <span>{adding ? "Add children" : draft.step === "kind" ? "New" : "Check in"}</span>
-        </header>
-        <hr className="cash-receipt-rule" />
-        <p className="cash-receipt-row">
-          <span>
+        </div>
+        <form
+          ref={formRef}
+          className="cash-check-body"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (draft.step === "kind") {
+              if (draft.kind === "walkin") onWalkIn();
+              else onChange({ ...draft, step: "time" });
+              return;
+            }
+            if (draft.step === "time") {
+              onChange({ ...draft, step: "phone" });
+              return;
+            }
+            if (draft.step === "phone" || draft.step === "children" || draft.step === "pay") return;
+            if (adding) onAdd(draft);
+            else onCheckIn(draft);
+          }}
+        >
+          <p className="cash-hint">
+            {venueName}
+            {" · "}
             {adding
               ? `${draft.addToCode} · ${draft.addToCount ?? 0} already in`
               : draft.step === "kind"
                 ? draft.kind === "walkin"
                   ? "Food, no phone"
                   : "Play, paid first"
-                : `Play ${rate?.minutes ?? draft.minutes} min`}
-          </span>
-          <b>{adding ? "Same bill" : draft.step === "kind" ? (draft.kind === "walkin" ? "Walk-in" : "Play") : formatNu(amount)}</b>
-        </p>
-        <button type="submit" className="sr-only" tabIndex={-1}>
-          Print
-        </button>
-        <label className="cash-field">
-          <span>{titles[draft.step]}</span>
-          {draft.step === "kind" ? (
-            <div className="grid grid-cols-2 gap-2 normal-case">
-              <button type="button" className="cash-time-key" aria-pressed={draft.kind === "walkin"} onClick={onWalkIn}>
-                Walk-in
-              </button>
-              <button
-                type="button"
-                className="cash-time-key"
-                aria-pressed={draft.kind === "play"}
-                onClick={() => onChange({ ...draft, kind: "play", step: "time" })}
-              >
-                Play
-              </button>
-            </div>
+                : `Play ${rate?.minutes ?? draft.minutes} min · ${formatNu(amount)}`}
+          </p>
+          <button type="submit" className="sr-only" tabIndex={-1}>
+            Continue
+          </button>
+          <label className="cash-field">
+            <span>{titles[draft.step]}</span>
+            {draft.step === "kind" ? (
+              <div className="grid grid-cols-2 gap-2 normal-case">
+                <button type="button" className="cash-time-key" aria-pressed={draft.kind === "walkin"} onClick={onWalkIn}>
+                  Walk-in
+                </button>
+                <button
+                  type="button"
+                  className="cash-time-key"
+                  aria-pressed={draft.kind === "play"}
+                  onClick={() => onChange({ ...draft, kind: "play", step: "time" })}
+                >
+                  Play
+                </button>
+              </div>
+            ) : null}
+            {draft.step === "time" ? (
+              <div className="grid gap-2 normal-case">
+                {rates.length ? (
+                  rates.map((item) => (
+                    <button
+                      key={item.minutes}
+                      type="button"
+                      className="cash-time-key"
+                      aria-pressed={item.minutes === draft.minutes}
+                      onClick={() => onChange({ ...draft, minutes: item.minutes, step: "phone" })}
+                    >
+                      {item.minutes} min · {formatNu(item.amountNu)}
+                    </button>
+                  ))
+                ) : (
+                  <p className="cash-hint">No play rates are set.</p>
+                )}
+              </div>
+            ) : null}
+            {draft.step === "phone" ? (
+              <input
+                ref={fieldRef}
+                inputMode="numeric"
+                autoComplete="off"
+                value={draft.phone}
+                onChange={(event) => onChange({ ...draft, phone: event.target.value.replace(/\D/g, "").slice(0, 8) })}
+              />
+            ) : null}
+            {draft.step === "children" || draft.step === "adding" ? (
+              <input
+                ref={fieldRef}
+                inputMode="numeric"
+                autoComplete="off"
+                value={draft.children}
+                onChange={(event) => onChange({ ...draft, children: event.target.value.replace(/\D/g, "").slice(0, 2) })}
+              />
+            ) : null}
+            {draft.step === "pay" ? (
+              <p className="cash-hint">
+                {draft.kind === "play"
+                  ? "The first play time is paid now. Extra time is paid later with the bill. Enter types the journal number. C is cash."
+                  : "Enter types the journal number. C is cash."}
+              </p>
+            ) : null}
+            {draft.step === "journal" ? (
+              <input
+                ref={fieldRef}
+                autoComplete="off"
+                value={draft.journal}
+                placeholder="126-…"
+                onChange={(event) => {
+                  const journal = event.target.value.slice(0, 40);
+                  const found = bankFromJournal(journal);
+                  onChange({ ...draft, journal, bank: found || draft.bank });
+                }}
+              />
+            ) : null}
+          </label>
+          {draft.step === "journal" ? <BankPick value={draft.bank || bankFromJournal(draft.journal)} onChange={(bank) => onChange({ ...draft, bank })} /> : null}
+          {draft.method === "bank_qr" && (draft.step === "pay" || draft.step === "journal") ? (
+            <PayQr staticPayload={staticPayload} amountNu={amount} note={`Play ${rate?.minutes ?? draft.minutes}m`} compact />
           ) : null}
-          {draft.step === "time" ? (
-            <div className="grid gap-2 normal-case">
-              {rates.length ? (
-                rates.map((item) => (
-                  <button
-                    key={item.minutes}
-                    type="button"
-                    className="cash-time-key"
-                    aria-pressed={item.minutes === draft.minutes}
-                    onClick={() => onChange({ ...draft, minutes: item.minutes, step: "phone" })}
-                  >
-                    {item.minutes} min · {formatNu(item.amountNu)}
-                  </button>
-                ))
-              ) : (
-                <p className="cash-hint">No play rates are set.</p>
-              )}
-            </div>
-          ) : null}
-          {draft.step === "phone" ? (
-            <input
-              ref={fieldRef}
-              inputMode="numeric"
-              autoComplete="off"
-              value={draft.phone}
-              onChange={(event) => onChange({ ...draft, phone: event.target.value.replace(/\D/g, "").slice(0, 8) })}
-            />
-          ) : null}
-          {draft.step === "children" || draft.step === "adding" ? (
-            <input
-              ref={fieldRef}
-              inputMode="numeric"
-              autoComplete="off"
-              value={draft.children}
-              onChange={(event) => onChange({ ...draft, children: event.target.value.replace(/\D/g, "").slice(0, 2) })}
-            />
-          ) : null}
-          {draft.step === "pay" ? (
-            <p className="cash-hint">
-              {draft.kind === "play"
-                ? "The first play time is paid now. Extra time is paid later with the bill. Enter types the journal number. C is cash."
-                : "Enter types the journal number. C is cash."}
-            </p>
-          ) : null}
-          {draft.step === "journal" ? (
-            <input
-              ref={fieldRef}
-              autoComplete="off"
-              value={draft.journal}
-              placeholder="126-…"
-              onChange={(event) => {
-                const journal = event.target.value.slice(0, 40);
-                const found = bankFromJournal(journal);
-                onChange({ ...draft, journal, bank: found || draft.bank });
-              }}
-            />
-          ) : null}
-        </label>
-        {draft.step === "journal" ? <BankPick value={draft.bank || bankFromJournal(draft.journal)} onChange={(bank) => onChange({ ...draft, bank })} /> : null}
-        {draft.method === "bank_qr" && (draft.step === "pay" || draft.step === "journal") ? (
-          <PayQr staticPayload={staticPayload} amountNu={amount} note={`Play ${rate?.minutes ?? draft.minutes}m`} compact />
-        ) : null}
-        <p className="cash-hint">
-          {draft.step === "kind"
-            ? "Left and right choose. Enter continues. Walk-in opens the menu. Play is paid before they go in."
-            : draft.step === "time"
-              ? "30 min is highlighted. Up and down pick another time. Enter continues."
-              : "Enter continues. Escape cancels. After play is paid, scan the ticket to add food on this same visit."}
-        </p>
-      </form>
-    </aside>
+          <p className="cash-hint">
+            {draft.step === "kind"
+              ? "Left and right choose. Enter continues. Walk-in opens the menu. Play is paid before they go in."
+              : draft.step === "time"
+                ? "30 min is highlighted. Up and down pick another time. Enter continues."
+                : "Enter continues. Escape cancels. After play is paid, scan the ticket to add food on this same visit."}
+          </p>
+        </form>
+      </div>
+    </div>
   );
 }
 
