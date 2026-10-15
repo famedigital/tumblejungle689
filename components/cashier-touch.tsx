@@ -717,6 +717,11 @@ export function CashierTouch({
       return;
     }
     if (!unsentFood(openVisit).length) return;
+    setMenuOpen(false);
+    setPeopleOpen(false);
+    setFindOpen(false);
+    setPaySheet(true);
+    setRailStart("top");
     setTableError("");
     setAskTable(true);
   }
@@ -741,6 +746,11 @@ export function CashierTouch({
     setMenuOpen(false);
     setPeopleOpen(false);
     setRecentOpen(false);
+    setTimeUpOpen(false);
+    setFindOpen(false);
+    setMoreOpen(false);
+    setPaySheet(true);
+    setRailStart("top");
     if ((target.childCount > 0 || target.blocks.length > 0) && !target.leftAt) {
       book.commit({
         id: crypto.randomUUID(),
