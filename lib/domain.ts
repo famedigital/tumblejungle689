@@ -750,6 +750,19 @@ async function writeTillEvent(
   );
 }
 
+/** Latest complimentary till event for a visit, if any. */
+export async function complimentaryOf(visitId: number): Promise<{ amountNu: number; at: string } | null> {
+  await ensureTillEvents();
+  const row = await query().one<{ amount_nu: number; created_at: string }>(
+    `SELECT amount_nu, created_at FROM till_events
+     WHERE visit_id = ? AND kind = 'comp'
+     ORDER BY id DESC LIMIT 1`,
+    [visitId],
+  );
+  if (!row) return null;
+  return { amountNu: Number(row.amount_nu) || 0, at: row.created_at };
+}
+
 async function closeVisit(database: Query, visitId: number) {
   const closed = nowIso();
   const lastPaid = await database.one<{ extends_to: string }>(

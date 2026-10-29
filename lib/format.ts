@@ -1,5 +1,6 @@
 export function formatNu(amount: number): string {
-  return `Nu ${amount.toLocaleString("en-IN")}`;
+  const body = `Nu\u00A0${Math.abs(amount).toLocaleString("en-IN")}`;
+  return amount < 0 ? `−${body}` : body;
 }
 
 export function codeFromScan(raw: string): string {

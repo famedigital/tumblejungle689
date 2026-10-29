@@ -3,7 +3,7 @@ import { Receipt } from "@/components/receipt";
 import { ReceiptActions } from "@/components/receipt-actions";
 import { requireArea } from "@/lib/auth";
 import { chargeRatesOf, formatRate, quoteCharges } from "@/lib/charges";
-import { getSettings, getVisitByCode } from "@/lib/domain";
+import { complimentaryOf, getSettings, getVisitByCode } from "@/lib/domain";
 import { formatPhone, formatWhen } from "@/lib/format";
 import { quoteOvertime } from "@/lib/overtime";
 import { bankFromJournal } from "@/lib/pay-banks";
@@ -41,8 +41,12 @@ export default async function ReceiptPage({ params }: { params: Promise<{ code: 
           chargeRatesOf(settings),
         )
       : null;
-  const serviceNu = visit.status === "open" ? (openQuote?.serviceNu ?? 0) : paidService;
-  const gstNu = visit.status === "open" ? (openQuote?.gstNu ?? 0) : paidGst;
+  const comp = visit.status === "settled" ? await complimentaryOf(visit.id) : null;
+  const complimentary = Boolean(comp);
+  const itemSubtotal = lines.reduce((sum, line) => sum + line.amount, 0);
+  const compQuote = complimentary ? quoteCharges(itemSubtotal, chargeRatesOf(settings)) : null;
+  const serviceNu = visit.status === "open" ? (openQuote?.serviceNu ?? 0) : complimentary ? (compQuote?.serviceNu ?? 0) : paidService;
+  const gstNu = visit.status === "open" ? (openQuote?.gstNu ?? 0) : complimentary ? (compQuote?.gstNu ?? 0) : paidGst;
   if (serviceNu > 0) lines.push({ name: `S.C. ${formatRate(settings.scPercent)}%`, qty: 1, amount: serviceNu, paid: visit.status !== "open" });
   if (gstNu > 0) lines.push({ name: `GST ${formatRate(settings.gstPercent)}%`, qty: 1, amount: gstNu, paid: visit.status !== "open" });
   const cash = visit.payments.filter((payment) => payment.method === "cash").reduce((sum, payment) => sum + payment.amountNu, 0);
@@ -56,7 +60,9 @@ export default async function ReceiptPage({ params }: { params: Promise<{ code: 
     if (hit) hit.amount += payment.amountNu;
     else banks.push({ name, ref, amount: payment.amountNu });
   }
-  const total = visit.status === "open" && visit.dueNu > 0 ? visit.dueNu : cash + bank;
+  const subtotal = lines.reduce((sum, line) => sum + line.amount, 0);
+  const waiveNu = complimentary ? Math.max(0, Math.round(comp?.amountNu || subtotal - cash - bank)) : 0;
+  const total = visit.status === "open" && visit.dueNu > 0 ? visit.dueNu : complimentary ? Math.max(0, subtotal - waiveNu) : cash + bank;
 
   return (
     <main className="receipt-stage">
@@ -76,6 +82,8 @@ export default async function ReceiptPage({ params }: { params: Promise<{ code: 
         thanks={settings.receiptThanks}
         rules={settings.receiptRules.split(/\r?\n/)}
         number={visit.receiptNo}
+        complimentary={complimentary}
+        waiveNu={complimentary ? waiveNu : null}
       />
     </main>
   );

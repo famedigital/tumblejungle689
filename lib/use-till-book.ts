@@ -63,7 +63,10 @@ export function useTillBook(query?: string) {
           break;
         }
         const appliedIds = new Set((body.applied ?? []).map((row) => row.id));
-        if (body.failedId && !body.retry) appliedIds.add(body.failedId);
+        // Drop hard failures from the outbox so they do not loop, but keep the error
+        // visible — empty outbox must not read as "Saved" when the server rejected.
+        const hardFail = Boolean(body.failedId && !body.retry);
+        if (hardFail && body.failedId) appliedIds.add(body.failedId);
         let visits = bookRef.current.base.visits;
         for (const row of body.applied ?? []) {
           visits = upsertVisit(visits, row.visit);
@@ -97,6 +100,7 @@ export function useTillBook(query?: string) {
           break;
         }
         if (body.error) setError(body.error);
+        else if (!hardFail) setError("");
         if (body.retry || removed === 0) {
           stalled = true;
           break;
@@ -119,8 +123,10 @@ export function useTillBook(query?: string) {
         const snapshot = (await response.json()) as TillSnapshot;
         const { focus: found, ...rest } = snapshot;
         const newer = (rest.generation ?? 0) > (bookRef.current.base.generation ?? 0);
-        if (!newer && (hadOutbox || bookRef.current.base.savedAt !== stamp || bookRef.current.outbox.length)) return null;
-        await remember({ base: rest, outbox: [] });
+        const pending = bookRef.current.outbox;
+        if (!newer && (hadOutbox || bookRef.current.base.savedAt !== stamp || pending.length)) return null;
+        // Never drop local ops still waiting to sync.
+        await remember({ base: rest, outbox: pending });
         if (found) {
           setFocus(found);
           if (term) setSelectedCode(found.code);

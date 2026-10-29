@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>80mm receipt print check</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 24px;
+        background: #d5dee3;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 24px;
+        justify-content: center;
+        font-family: system-ui, sans-serif;
+      }
+      h2 {
+        width: 100%;
+        text-align: center;
+        font-size: 14px;
+        color: #333;
+      }
+      .print-receipt {
+        box-sizing: border-box;
+        width: 80mm;
+        max-width: 80mm;
+        padding: 4mm 3.5mm 10mm;
+        background: #fff;
+        color: #000;
+        font-family: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace;
+        font-size: 11px;
+        line-height: 1.3;
+        box-shadow: 0 22px 50px rgb(22 36 42 / 16%);
+      }
+      .print-receipt p,
+      .print-receipt ul,
+      .print-receipt li,
+      .print-receipt h1 {
+        margin: 0;
+        padding: 0;
+      }
+      .print-receipt ul {
+        list-style: none;
+      }
+      .receipt-head {
+        text-align: center;
+      }
+      .receipt-kicker {
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }
+      .receipt-venue {
+        margin: 1mm 0 0;
+        font-size: 16px;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+      }
+      .receipt-address {
+        margin: 0.8mm 0 0;
+        font-size: 10px;
+      }
+      .receipt-meta {
+        margin-top: 2.5mm;
+      }
+      .receipt-code {
+        font-weight: 700;
+        white-space: nowrap;
+      }
+      .receipt-rule {
+        height: 0;
+        margin: 2mm 0;
+        border: 0;
+        border-top: 1px dashed #000;
+      }
+      .receipt-cols,
+      .receipt-line,
+      .receipt-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 26mm;
+        align-items: start;
+        column-gap: 2mm;
+      }
+      .receipt-cols {
+        margin: 0 0 1mm;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+      .receipt-cols span:last-child,
+      .receipt-amt {
+        text-align: right;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+        font-weight: 700;
+      }
+      .receipt-lines {
+        display: grid;
+        gap: 1.2mm;
+      }
+      .receipt-item {
+        min-width: 0;
+        overflow-wrap: break-word;
+      }
+      .receipt-qty {
+        margin-right: 1mm;
+        font-weight: 700;
+      }
+      .receipt-sum {
+        display: grid;
+        gap: 0.6mm;
+      }
+      .receipt-total {
+        margin-top: 0.8mm;
+        padding-top: 1.2mm;
+        border-top: 2px solid #000;
+        font-size: 13px;
+        font-weight: 800;
+      }
+      .receipt-comp {
+        margin-top: 0.8mm;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-align: center;
+        text-transform: uppercase;
+      }
+      .receipt-jr {
+        font-size: 10px;
+      }
+      .receipt-jr .receipt-code {
+        white-space: normal;
+        word-break: break-all;
+        text-align: right;
+      }
+      .receipt-foot {
+        margin-top: 3mm;
+        text-align: center;
+      }
+      .receipt-thanks {
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .receipt-rules {
+        display: grid;
+        gap: 0.6mm;
+        margin: 2mm 0 0;
+        font-size: 9px;
+        text-align: left;
+      }
+      .receipt-rules li {
+        padding-left: 2.5mm;
+        text-indent: -2.5mm;
+      }
+      .receipt-rules li::before {
+        content: "* ";
+      }
+      .receipt-end {
+        margin-top: 2.5mm;
+        font-size: 9px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+      @page {
+        size: 80mm auto;
+        margin: 0;
+      }
+      @media print {
+        body {
+          background: #fff;
+          padding: 0;
+        }
+        .print-receipt {
+          box-shadow: none;
+        }
+        .no-print {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h2 class="no-print">Paid bank slip (80mm) — amounts must stay on one line; bank name + ref present</h2>
+    <article class="print-receipt" id="paid">
+      <header class="receipt-head">
+        <p class="receipt-kicker">Receipt</p>
+        <h1 class="receipt-venue">Tumble Jungle</h1>
+        <p class="receipt-address">Changjiji, Thimphu</p>
+      </header>
+      <section class="receipt-meta">
+        <p class="receipt-row"><span>No.</span><span class="receipt-code">#128</span></p>
+        <p class="receipt-row"><span>Date</span><span>29 Oct, 06:30</span></p>
+        <p class="receipt-row"><span>Ticket</span><span class="receipt-code">SAMPLE</span></p>
+        <p class="receipt-row"><span>Phone</span><span class="receipt-code">7777 8989</span></p>
+      </section>
+      <div class="receipt-rule"></div>
+      <p class="receipt-cols"><span>Item</span><span>Amt</span></p>
+      <ul class="receipt-lines">
+        <li class="receipt-line"><span class="receipt-item">Play 60 min</span><span class="receipt-amt">Nu&nbsp;350</span></li>
+        <li class="receipt-line"><span class="receipt-item"><span class="receipt-qty">2×</span>Milk tea</span><span class="receipt-amt">Nu&nbsp;80</span></li>
+      </ul>
+      <div class="receipt-rule"></div>
+      <section class="receipt-sum">
+        <p class="receipt-row receipt-total"><span>Total</span><span class="receipt-amt">Nu&nbsp;430</span></p>
+        <p class="receipt-row"><span>Cash</span><span class="receipt-amt">Nu&nbsp;150</span></p>
+        <div class="receipt-tender">
+          <p class="receipt-row"><span>MBOB</span><span class="receipt-amt">Nu&nbsp;280</span></p>
+          <p class="receipt-row receipt-jr"><span>Ref</span><span class="receipt-code">126-88412031</span></p>
+        </div>
+      </section>
+      <footer class="receipt-foot">
+        <p class="receipt-thanks">Thank you</p>
+        <ul class="receipt-rules"><li>Socks on in the play pit</li></ul>
+        <p class="receipt-end">— end —</p>
+      </footer>
+    </article>
+
+    <h2 class="no-print">Complimentary slip — subtotal, waive, total Nu 0, no charge</h2>
+    <article class="print-receipt" id="comp">
+      <header class="receipt-head">
+        <p class="receipt-kicker">Receipt</p>
+        <h1 class="receipt-venue">Tumble Jungle</h1>
+        <p class="receipt-address">Changjiji, Thimphu</p>
+      </header>
+      <section class="receipt-meta">
+        <p class="receipt-row"><span>No.</span><span class="receipt-code">#129</span></p>
+        <p class="receipt-row"><span>Date</span><span>29 Oct, 06:31</span></p>
+        <p class="receipt-row"><span>Ticket</span><span class="receipt-code">COMP01</span></p>
+        <p class="receipt-row"><span>Phone</span><span class="receipt-code">1712 3456</span></p>
+      </section>
+      <div class="receipt-rule"></div>
+      <p class="receipt-cols"><span>Item</span><span>Amt</span></p>
+      <ul class="receipt-lines">
+        <li class="receipt-line"><span class="receipt-item">Play 60 min</span><span class="receipt-amt">Nu&nbsp;350</span></li>
+        <li class="receipt-line"><span class="receipt-item">S.C. 10%</span><span class="receipt-amt">Nu&nbsp;35</span></li>
+        <li class="receipt-line"><span class="receipt-item">GST 5%</span><span class="receipt-amt">Nu&nbsp;19</span></li>
+      </ul>
+      <div class="receipt-rule"></div>
+      <section class="receipt-sum">
+        <p class="receipt-row"><span>Subtotal</span><span class="receipt-amt">Nu&nbsp;404</span></p>
+        <p class="receipt-row"><span>Complimentary</span><span class="receipt-amt">−Nu&nbsp;404</span></p>
+        <p class="receipt-row receipt-total"><span>Total</span><span class="receipt-amt">Nu&nbsp;0</span></p>
+        <p class="receipt-comp">No charge</p>
+      </section>
+      <footer class="receipt-foot">
+        <p class="receipt-thanks">Thank you</p>
+        <p class="receipt-end">— end —</p>
+      </footer>
+    </article>
+  </body>
+</html>

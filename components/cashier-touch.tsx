@@ -227,8 +227,11 @@ export function CashierTouch({
     lines: { name: string; qty: number; amount: number; paid: boolean }[];
     cash: number;
     bank: number;
+    banks: { name: string; ref: string; amount: number }[];
     total: number;
     receiptNo: number | null;
+    complimentary?: boolean;
+    waiveNu?: number;
   } | null>(null);
   const [scanNu, setScanNu] = useState(0);
   const [recentOpen, setRecentOpen] = useState(false);
@@ -1270,9 +1273,12 @@ export function CashierTouch({
               <b>{childrenIn}</b>
             </p>
           </div>
-          <p className="desk-sync" data-state={book.pending > 0 ? "local" : book.ready ? "saved" : "opening"}>
+          <p
+            className="desk-sync"
+            data-state={book.pending > 0 ? "local" : book.error ? "bad" : book.ready ? "saved" : "opening"}
+          >
             <i aria-hidden="true" />
-            {book.pending > 0 ? "On this till" : book.ready ? "Saved" : "Opening"}
+            {book.pending > 0 ? "On this till" : book.error ? "Not saved" : book.ready ? "Saved" : "Opening"}
           </p>
         </div>
       }
@@ -2075,6 +2081,9 @@ export function CashierTouch({
               if (!saved) return;
               const cash = pay === "comp" || pay === "bank_qr" ? 0 : pay === "split" ? cashNu : due;
               const bank = pay === "comp" || pay === "cash" ? 0 : pay === "split" ? bankNu : due;
+              const journal = String(formData.get("journal") ?? "").trim();
+              const payBank = String(formData.get("payBank") ?? "").trim();
+              const bankName = payBank || bankFromJournal(journal) || "Bank QR";
               setPaidSlip({
                 code: saved.code,
                 phone: saved.phone,
@@ -2096,12 +2105,17 @@ export function CashierTouch({
                     paid: true,
                   })),
                   ...chargeRows.map((row) => ({ name: row.name, qty: 1, amount: row.amount, paid: true })),
-                  ...(pay === "comp" ? [{ name: "Complimentary", qty: 1, amount: -due, paid: true }] : []),
                 ],
                 cash,
                 bank,
+                banks:
+                  bank > 0
+                    ? [{ name: bankName, ref: journal, amount: bank }]
+                    : [],
                 total: pay === "comp" ? 0 : cash + bank,
                 receiptNo: saved.receiptNo,
+                complimentary: pay === "comp",
+                waiveNu: pay === "comp" ? due : undefined,
               });
               setTender(null);
             }}
@@ -2193,10 +2207,13 @@ export function CashierTouch({
           total={paidSlip?.total ?? receiptTotal}
           cash={paidSlip?.cash ?? receiptCash}
           bank={paidSlip?.bank ?? receiptBank}
+          banks={paidSlip?.banks}
           note={receiptNote}
           thanks={receiptThanks}
           rules={receiptRules.split(/\r?\n/)}
           number={paidSlip?.receiptNo ?? visit?.receiptNo}
+          complimentary={Boolean(paidSlip?.complimentary)}
+          waiveNu={paidSlip?.waiveNu ?? null}
         />
         </PrintPortal>
       ) : null}

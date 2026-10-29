@@ -77,6 +77,7 @@ export function ReceiptEditor({
           banks={[{ name: "MBOB", ref: "126-88412031", amount: 280 }]}
           thanks={draftThanks}
           rules={ruleLines}
+          number={128}
         />
       </div>
     </section>
