@@ -1,0 +1,32 @@
+---
+description: Jumble Pulse AI — voice till, bank OCR, floor timer, and smart capacity
+globs: lib/pulse/**,components/pulse/**,app/api/pulse/**
+alwaysApply: false
+---
+
+# Jumble Pulse AI Engine
+
+Enterprise Score Pulse AI Engine ≥ 9 required.
+
+## Capabilities
+1. **Quick Voice Till**:
+   - Web Speech API / Gemini audio transcription for spoken commands:
+     * "2 kids 1 hour plus 2 pairs of socks" → parses `{ children: 2, minutes: 60, socks: 2 }`
+     * "Table 4 add 2 milkshakes and cheese fries" → parses `{ table: "4", items: [{ name: "milkshake", qty: 2 }, { name: "cheese fries", qty: 1 }] }`
+     * "Extend Sonam by 30 minutes" → parses `{ codeOrName: "Sonam", minutes: 30 }`
+
+2. **Smart Bank OCR & Journal Parser**:
+   - Client-side / server OCR pipeline for Bhutanese payment screenshots & SMS (mBoB, BNB, BDBL, Druk PNB)
+   - Auto-extracts `journalRef`, `amountNu`, and `bank` to eliminate manual typing and cashier fraud
+
+3. **Smart Floor Radar & Overtime Engine**:
+   - Visual play park capacity meter (0–100% capacity bar & gauge)
+   - Color-coded jumper status:
+     * Green: > 15 mins remaining
+     * Amber: 0–15 mins remaining (approaching finish)
+     * Pulsing Red: Overtime active with auto-calculated overtime charge
+   - One-tap WhatsApp notification to guardian
+
+4. **AI End-of-Day Audit & Reconciliation**:
+   - Daily automated shift report comparing Cash vs. Bank QR vs. Waived Overtime
+   - AI anomaly detection (flagging unusually high voids or manual rate overrides)

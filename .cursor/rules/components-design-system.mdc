@@ -1,0 +1,28 @@
+---
+description: Glass component system, screen layout standards, and sound feedback
+globs: components/**/*.{tsx,ts}
+alwaysApply: false
+---
+
+# Components & Design System
+
+Enterprise Score UI/Components ≥ 9 required.
+
+## Shared Primitives (`components/ui/glass/*`)
+- `GlassCard`: Frosted backdrop-blur container with subtle border glow, variants (`default`, `elevated`, `active`, `tinted`)
+- `GlassButton`: Tactile push button with tone variants (`emerald`, `amber`, `teal`, `rose`, `ghost`, `glass`)
+- `GlassBadge`: Compact pill badge for statuses (`active`, `warning`, `overtime`, `settled`, `kitchen_fired`)
+- `GlassTabs`: Pill-style tab bar with active glow pill indicator
+- `GlassChips`: Quick-select chips (for 30m, 60m, 90m, socks, table numbers)
+
+## Shell Architecture
+- `HeaderTopBar`: Live clock, outlet indicators, quick search (Ctrl+K), audio mute toggle, theme toggle, PIN quick lock button
+- `PersonaSwitcher`: Seamless one-tap bottom/top role switcher (Frontdesk Check-in · Play Floor Radar · Cafe & Bar · Restaurant KOT · Cashier Till · Admin & Analytics)
+- `PageHeader`: Consistent breadcrumb, title, action slot, and status tag
+
+## Soundscape
+- Use non-blocking Web Audio API synthesizer chimes (`lib/audio/sounds.ts`):
+  * `playCheckInChime()`: Upbeat harmonic welcome chime
+  * `playTimeUpWarning()`: Gentle double-ping reminder
+  * `playPaymentDing()`: Crisp cash register coin ding
+  * `playKotBell()`: Kitchen order bell

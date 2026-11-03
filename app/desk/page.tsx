@@ -1,15 +1,14 @@
 import { redirect } from "next/navigation";
+import { DeskPageClient } from "@/components/desk/desk-page-client";
+import { getSession } from "@/lib/auth";
+import { getSettings } from "@/lib/domain";
+import { can } from "@/lib/types";
 
-export default async function DeskPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ error?: string; ok?: string; q?: string }>;
-}) {
-  const params = await searchParams;
-  const next = new URLSearchParams();
-  if (params.q) next.set("q", params.q);
-  if (params.error) next.set("error", params.error);
-  if (params.ok) next.set("ok", params.ok);
-  const query = next.toString();
-  redirect(query ? `/cashier?${query}` : "/cashier");
+export default async function DeskPage() {
+  const session = await getSession();
+  if (!session || (!can(session.role, "desk") && !can(session.role, "cashier"))) {
+    redirect("/login");
+  }
+  const settings = await getSettings();
+  return <DeskPageClient rates={settings.rates} venueName={settings.venueName} />;
 }

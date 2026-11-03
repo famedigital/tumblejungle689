@@ -1,0 +1,27 @@
+# Tumble Jungle / PlayTab — Cursor Pointer & Build Directives
+
+Strict rules live in **`.cursor/rules/*.mdc`** and **`AGENTS.md`**.
+
+## Enterprise Score Gate
+Average ≥ 9.0 · no dimension < 8 · critical (Theme/A11y, POS/Till Flow, Glass UI Components, Pulse AI Engine) each ≥ 9. Paste scorecard on task completion.
+
+## Architectural Directives (Derived from ECCD Benchmark)
+1. **Zero Skeuomorphic Tilt / Pure Glass UI**:
+   - MUST NOT use `rotateX`, `rotateY`, pseudo-paper curls, or 3D skeuomorphic receipt physics.
+   - Use soft tactile elevation: `hover:-translate-y-0.5 active:scale-[0.985]`.
+   - Dual-theme high contrast: Light ("Sunrise Frosted Pearl") & Dark ("Midnight Glass").
+   - NEVER use bare `text-white` on glass surfaces; always use `text-slate-900 dark:text-white` for headers and `text-slate-700 dark:text-slate-300` for subtitles.
+
+2. **Unified App Shell & Role Flow**:
+   - Universal `PersonaSwitcher` & `HeaderTopBar` across Frontdesk, Play Floor, Cafe, Restaurant, Cashier, and Owner/Admin.
+   - Quick Unlock 4-digit PIN with 15-minute idle lock on Cashier & Admin screens.
+
+3. **Smartness / Play Pulse AI**:
+   - Quick Voice Till: voice ordering & play session extension via mic.
+   - Bhutan Bank OCR: auto-extract journal reference, amount, and bank from mBoB/BNB/BDBL payment screenshots.
+   - Real-time floor timer & heat capacity tracker with automated overtime quote calculation.
+   - Audio feedback soundscape (check-in chime, time-up chime, payment ding, KOT bell).
+
+4. **Canonical Docs**:
+   - `docs/CURSOR_BUILD_PLAN.md`
+   - `docs/ENTERPRISE_SPEC.md`

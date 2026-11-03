@@ -7,6 +7,7 @@ import {
 import { ChargeForm } from "@/components/charge-form";
 import { FloorBoard } from "@/components/floor-board";
 import { Flash } from "@/components/flash";
+import { DailyAiAuditor } from "@/components/pulse/DailyAiAuditor";
 import { StaffShell, type StaffSection } from "@/components/staff-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,7 +27,7 @@ export default async function AdminPage({
   const section: StaffSection = SECTIONS.includes(query.section as (typeof SECTIONS)[number])
     ? (query.section as StaffSection)
     : "floor";
-  const settings = section === "page" || section === "charges" ? await getSettings() : null;
+  const settings = section === "page" || section === "charges" || section === "floor" ? await getSettings() : null;
   const pulse = section === "floor" ? await floorPulse() : null;
   const staff = section === "staff" ? await listStaff() : [];
   const panel = "space-y-4 rounded-3xl bg-card p-5 ring-1 ring-foreground/10";
@@ -35,7 +36,22 @@ export default async function AdminPage({
   return (
     <StaffShell role={session.role} name={session.name} title={title} tone="candy" current={section}>
       <Flash error={query.error} ok={query.ok} />
-      {section === "floor" && pulse ? <FloorBoard pulse={pulse} /> : null}
+      {section === "floor" && pulse ? (
+        <div className="grid gap-4">
+          <DailyAiAuditor
+            summary={{
+              totalNu: pulse.summary.totalNu,
+              cashNu: pulse.summary.cashNu,
+              bankNu: pulse.summary.bankNu,
+              playNu: pulse.summary.playNu,
+              foodNu: pulse.summary.foodNu,
+              settledCount: pulse.summary.settledCount,
+            }}
+            venue={settings?.venueName}
+          />
+          <FloorBoard pulse={pulse} />
+        </div>
+      ) : null}
       {section === "page" && settings ? (
         <section className={panel}>
           <h2 className="font-heading text-2xl">Public page</h2>

@@ -1,0 +1,30 @@
+---
+description: Tumble Jungle enterprise core — score gate, architecture rules, scope lock
+alwaysApply: true
+---
+
+# Tumble Jungle Core (PlayTab Enterprise)
+
+## Enterprise Score Gate
+MUST NOT mark work done unless Average ≥ 9.0, no dimension < 8, and critical dims (Theme/A11y, POS/Till Flow, Glass UI Components, Pulse AI Engine) each ≥ 9. Paste scorecard on completion.
+
+## North Star
+Ultra-fast child play admission, live floor safety & capacity tracking, seamless multi-outlet F&B ordering (Cafe + Restaurant KOT), instant Bhutan RMA EMV QR payments, and AI smart assistance.
+
+## Canonical Docs
+- `docs/CURSOR_BUILD_PLAN.md`
+- `docs/ENTERPRISE_SPEC.md`
+- `.cursorrules`
+
+## MUST
+- Compose from `components/ui/glass/*` (`GlassCard`, `GlassButton`, `GlassBadge`, `GlassTabs`, `GlassChips`)
+- Run `npm run build` or `npm run lint` before claiming done; fix TypeScript and lint errors in-place
+- Currency Nu. (Bhutanese Ngultrum); support Bhutan bank payload (mBoB, BNB, BDBL, Druk PNB)
+- Quick Unlock PIN modal with 15-minute idle lock on financial/admin screens
+- Mobile & tablet responsive POS layout (10.1" / 15.6" touch screens)
+
+## MUST NOT
+- Use `rotateX`, `rotateY`, perspective tilt, or faux receipt paper tears
+- Use bare `text-white` or `text-slate-100` on light frosted glass
+- Hardcode credentials or secrets in client code
+- Break existing PostgreSQL till event sourcing or offline backup logic

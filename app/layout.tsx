@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Fraunces, Nunito } from "next/font/google";
+import { ThemeProvider } from "@/components/providers/theme-provider";
 import "./globals.css";
 
 const sans = Nunito({
@@ -22,8 +23,14 @@ export const dynamic = "force-dynamic";
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${sans.variable} ${heading.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col bg-background text-foreground">{children}</body>
+    <html
+      lang="en"
+      className={`${sans.variable} ${heading.variable} h-full antialiased`}
+      suppressHydrationWarning
+    >
+      <body className="min-h-full flex flex-col bg-background text-foreground">
+        <ThemeProvider>{children}</ThemeProvider>
+      </body>
     </html>
   );
 }
