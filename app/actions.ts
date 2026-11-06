@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { clearSession, findStaffBySecret, getSession, requireArea, setSession } from "@/lib/auth";
+import { clearSession, findAdminBySecret, findStaffBySecret, getSession, requireArea, setSession } from "@/lib/auth";
 import {
   addCategory,
   addMenuItem,
@@ -128,17 +128,7 @@ export async function loginAction(formData: FormData) {
   const staff = await findStaffBySecret(text(formData, "secret"));
   if (!staff) redirect("/login?error=That%20password%20or%20PIN%20was%20not%20recognised.");
   await setSession({ staffId: staff.id, name: staff.name, role: staff.role });
-  redirect(
-    staff.role === "admin"
-      ? "/admin"
-      : staff.role === "frontdesk"
-        ? "/desk"
-        : staff.role === "cafe"
-          ? "/counter/cafe"
-          : staff.role === "restaurant"
-            ? "/counter/restaurant"
-            : "/cashier",
-  );
+  redirect(staff.role === "admin" ? "/admin" : "/cashier");
 }
 
 export async function logoutAction() {
@@ -186,8 +176,8 @@ export async function removeLineAction(formData: FormData) {
 }
 
 async function requireManager(formData: FormData) {
-  const staff = await findStaffBySecret(text(formData, "secret"));
-  if (!staff || staff.role !== "admin") throw new Error("Owner PIN was not recognised.");
+  const staff = await findAdminBySecret(text(formData, "secret"));
+  if (!staff) throw new Error("Owner PIN was not recognised.");
   return staff;
 }
 
@@ -335,8 +325,8 @@ export async function saveVenueAction(formData: FormData) {
 }
 
 export async function openBackOfficeAction(formData: FormData) {
-  const owner = await findStaffBySecret(text(formData, "secret"));
-  if (!owner || owner.role !== "admin") redirect("/cashier?error=Owner%20PIN%20was%20not%20recognised.");
+  const owner = await findAdminBySecret(text(formData, "secret"));
+  if (!owner) redirect("/cashier?error=Owner%20PIN%20was%20not%20recognised.");
   await setSession({ staffId: owner.id, name: owner.name, role: owner.role });
   redirect("/admin");
 }
@@ -345,8 +335,8 @@ export async function addCounterDish(input: { name: string; priceNu: number; out
   const session = await getSession();
   if (!session || !can(session.role, "cashier")) throw new Error("Sign in again.");
   if (session.role !== "admin") {
-    const owner = await findStaffBySecret(input.secret);
-    if (!owner || owner.role !== "admin") throw new Error("Owner PIN was not recognised.");
+    const owner = await findAdminBySecret(input.secret);
+    if (!owner) throw new Error("Owner PIN was not recognised.");
   }
   const categoryId = await counterCategory(input.outlet);
   const id = await addMenuItem({ categoryId, name: input.name, priceNu: input.priceNu });

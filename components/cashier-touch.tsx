@@ -3044,8 +3044,8 @@ function MenuSheet({
   }, [rows, at, pane, rates, playAt, onPlay, phoneFor, phone, knownPhone, dish, dishName, dishPrice, dishOutlet, dishPin, role, onCreate]);
 
   return (
-    <div className="cash-scrim" role="presentation" onClick={onClose}>
-      <div className="cash-sheet cash-sheet-menu" role="dialog" aria-modal="true" aria-label="Menu" onClick={(event) => event.stopPropagation()}>
+    <div className="cash-scrim cash-scrim-clear" role="presentation">
+      <div className="cash-sheet cash-sheet-menu" role="dialog" aria-label="Menu" onClick={(event) => event.stopPropagation()}>
         <div className="cash-sheet-bar">
           <p>{pane === "play" ? "Play" : "Menu"}</p>
           <button type="button" onClick={onClose}>

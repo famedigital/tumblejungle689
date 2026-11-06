@@ -68,11 +68,32 @@ export async function findStaffBySecret(secret: string): Promise<{
   name: string;
   role: Role;
 } | null> {
+  const pin = secret.trim();
+  if (!pin) return null;
   const rows = await query().many<{ id: number; name: string; role: Role; secret_hash: string }>(
-    "SELECT id, name, role, secret_hash FROM staff WHERE active = 1",
+    "SELECT id, name, role, secret_hash FROM staff WHERE active = 1 ORDER BY id",
   );
   for (const row of rows) {
-    if (verifySecret(secret.trim(), row.secret_hash)) {
+    if (verifySecret(pin, row.secret_hash)) {
+      return { id: row.id, name: row.name, role: row.role };
+    }
+  }
+  return null;
+}
+
+/** Owner PIN checks: only match active admin staff (avoids shared-PIN collisions). */
+export async function findAdminBySecret(secret: string): Promise<{
+  id: number;
+  name: string;
+  role: Role;
+} | null> {
+  const pin = secret.trim();
+  if (!pin) return null;
+  const rows = await query().many<{ id: number; name: string; role: Role; secret_hash: string }>(
+    "SELECT id, name, role, secret_hash FROM staff WHERE active = 1 AND role = 'admin' ORDER BY id",
+  );
+  for (const row of rows) {
+    if (verifySecret(pin, row.secret_hash)) {
       return { id: row.id, name: row.name, role: row.role };
     }
   }

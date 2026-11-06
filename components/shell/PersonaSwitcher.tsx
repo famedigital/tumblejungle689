@@ -2,17 +2,10 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import {
-  Coffee,
-  LayoutDashboard,
-  Store,
-  Ticket,
-  Timer,
-  UtensilsCrossed,
-} from "lucide-react";
+import { LayoutDashboard, Store, Timer } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type PersonaId = "frontdesk" | "floor" | "cafe" | "restaurant" | "cashier" | "admin";
+type PersonaId = "floor" | "cashier" | "admin";
 
 interface PersonaItem {
   id: PersonaId;
@@ -24,13 +17,6 @@ interface PersonaItem {
 
 const PERSONAS: PersonaItem[] = [
   {
-    id: "frontdesk",
-    label: "Frontdesk",
-    href: "/desk",
-    icon: Ticket,
-    match: (pathname) => pathname === "/desk" || pathname.startsWith("/stickers"),
-  },
-  {
     id: "floor",
     label: "Play Floor",
     href: "/floor",
@@ -38,25 +24,11 @@ const PERSONAS: PersonaItem[] = [
     match: (pathname) => pathname.startsWith("/floor"),
   },
   {
-    id: "cafe",
-    label: "Cafe",
-    href: "/counter/cafe",
-    icon: Coffee,
-    match: (pathname) => pathname.startsWith("/counter/cafe"),
-  },
-  {
-    id: "restaurant",
-    label: "Restaurant",
-    href: "/counter/restaurant",
-    icon: UtensilsCrossed,
-    match: (pathname) => pathname.startsWith("/counter/restaurant"),
-  },
-  {
     id: "cashier",
     label: "Cashier",
     href: "/cashier",
     icon: Store,
-    match: (pathname) => pathname.startsWith("/cashier"),
+    match: (pathname) => pathname.startsWith("/cashier") || pathname.startsWith("/stickers"),
   },
   {
     id: "admin",

@@ -109,7 +109,7 @@ All screens support instantaneous theme switching via `html.dark` or `html.light
 ### 5.1 4-Digit Role PIN Standard (0.5-Second Switch)
 - Terminal stays logged in to shop account.
 - Staff switch roles instantly using 4-digit PIN:
-  * **Owner PIN (`1234`)**: Full access (takings, P&L, catalog pricing, voids, staff audit).
+  * **Owner PIN (`1111`)**: Full access (takings, P&L, catalog pricing, voids, staff audit).
   * **Frontdesk PIN (`5678`)**: Fast admission, sticker wristband printing, waiver toggle.
   * **Floor PIN (`2468`)**: Live floor radar, overtime waiver, WhatsApp notifications.
   * **Cashier PIN (`9012`)**: Locked strictly to POS till tender and Bhutan RMA EMV QR payments.

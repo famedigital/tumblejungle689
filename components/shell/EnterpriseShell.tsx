@@ -63,7 +63,7 @@ export function EnterpriseShell({
     (cmd: VoiceTillCommand) => {
       setVoiceOpen(false);
       if (cmd.action === "admission") {
-        router.push("/desk");
+        router.push("/cashier?new=1");
         return;
       }
       if (cmd.action === "lookup" || cmd.action === "extend_play" || cmd.action === "settle") {
@@ -72,8 +72,7 @@ export function EnterpriseShell({
         return;
       }
       if (cmd.action === "add_item") {
-        const outlet = cmd.items?.[0]?.outlet === "restaurant" ? "restaurant" : "cafe";
-        router.push(`/counter/${outlet}`);
+        router.push("/cashier");
       }
     },
     [router],

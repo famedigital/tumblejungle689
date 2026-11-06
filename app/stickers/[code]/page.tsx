@@ -15,7 +15,7 @@ export default async function StickersPage({ params }: { params: Promise<{ code:
   const settings = await getSettings();
   const origin = await requestOrigin();
   const qr = await qrDataUrl(`${origin}${visitPath(visit.code)}`);
-  const back = can(session.role, "cashier") ? `/cashier?q=${visit.code}` : `/desk?q=${visit.code}`;
+  const back = `/cashier?q=${visit.code}`;
 
   return (
     <StickerSheet

@@ -1,4 +1,4 @@
-import { findStaffBySecret, getSession } from "@/lib/auth";
+import { findAdminBySecret, getSession } from "@/lib/auth";
 import { can } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -13,8 +13,8 @@ export async function POST(request: Request) {
   if (!secret) {
     return Response.json({ ok: false, error: "Enter the owner PIN." }, { status: 400 });
   }
-  const staff = await findStaffBySecret(secret);
-  if (!staff || staff.role !== "admin") {
+  const staff = await findAdminBySecret(secret);
+  if (!staff) {
     return Response.json({ ok: false, error: "Owner PIN was not recognised." }, { status: 401 });
   }
   return Response.json({ ok: true, name: staff.name });
