@@ -1830,6 +1830,9 @@ export function CashierTouch({
                 <button type="button" onClick={() => window.open("/display", "tumble-customer", "width=1100,height=800")}>
                   Screen
                 </button>
+                <button type="button" onClick={() => window.open("/v2", "_blank")}>
+                  📱 Mobile v2
+                </button>
                 <form action={logoutAction}>
                   <button type="submit">Lock</button>
                 </form>
@@ -2584,7 +2587,9 @@ function OrderVoid({
   onVoid: (secret: string) => void;
 }) {
   const closeRef = useRef(onClose);
-  closeRef.current = onClose;
+  useEffect(() => {
+    closeRef.current = onClose;
+  }, [onClose]);
   const slips = lines;
   const [busy, setBusy] = useState(false);
   const [pinError, setPinError] = useState("");
@@ -2606,11 +2611,14 @@ function OrderVoid({
 
   useEffect(() => {
     if (!open) {
-      setBusy(false);
-      setPinError("");
-      setStamp("");
-      setCancelTicket(null);
-      restCancels.current = [];
+      const t = window.setTimeout(() => {
+        setBusy(false);
+        setPinError("");
+        setStamp("");
+        setCancelTicket(null);
+        restCancels.current = [];
+      }, 0);
+      return () => clearTimeout(t);
     }
   }, [open]);
 
