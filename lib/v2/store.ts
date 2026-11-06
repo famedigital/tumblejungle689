@@ -72,8 +72,10 @@ interface V2State {
     visitId: number;
     method: PayMethod;
     amountNu: number;
+    journal?: string;
+    payBank?: string;
     printReceipt: boolean;
-  }) => Promise<{ ok: boolean; error?: string }>;
+  }) => Promise<{ ok: boolean; receiptNo?: number; error?: string }>;
 
   dispatchRemotePrint: (job: Omit<V2PrintJob, "id" | "timestamp" | "staffName" | "deviceLabel">) => Promise<void>;
 }
@@ -494,7 +496,7 @@ export const useV2Store = create<V2State>((set, get) => ({
         amountNu: payload.amountNu,
       });
 
-      return { ok: true };
+      return { ok: true, receiptNo };
     } catch (err) {
       // Revert if failed
       if (visitToSettle) {
