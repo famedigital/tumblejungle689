@@ -2,7 +2,7 @@
 
 import { useV2Store } from "@/lib/v2/store";
 import Link from "next/link";
-import { User, Activity, RefreshCw, LayoutDashboard } from "lucide-react";
+import { User, Activity, RefreshCw, LayoutDashboard, LogOut } from "lucide-react";
 
 export function TopBar({
   onOpenStaffModal,
@@ -125,6 +125,18 @@ export function TopBar({
             <span className="truncate max-w-[85px] sm:max-w-[120px]">
               {staff?.staffName || "Set Staff"}
             </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={async () => {
+              await fetch("/api/auth/logout", { method: "POST" });
+              window.location.href = "/login";
+            }}
+            title="Sign Out / Lock Station"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          >
+            <LogOut className="h-4 w-4" />
           </button>
         </div>
       </div>

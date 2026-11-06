@@ -24,6 +24,7 @@ import {
   CheckCircle2,
   SlidersHorizontal,
   X,
+  LogOut,
 } from "lucide-react";
 import { PayQr } from "@/components/pay-qr";
 import type { MenuItem, Rate } from "@/lib/types";
@@ -497,6 +498,18 @@ function AdminDashboardInner() {
               title="Refresh Data"
             >
               <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            </button>
+
+            <button
+              type="button"
+              onClick={async () => {
+                await fetch("/api/auth/logout", { method: "POST" });
+                window.location.href = "/login";
+              }}
+              title="Sign Out"
+              className="p-2 rounded-xl border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-rose-500 transition-colors"
+            >
+              <LogOut className="h-4 w-4" />
             </button>
           </div>
         </div>
