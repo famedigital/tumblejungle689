@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { supabase, REALTIME_CHANNEL } from "./supabase";
+import { broadcastLive, startLiveChannel } from "./realtime";
 import type { AuditEvent, StaffIdentity, V2BootstrapData, V2PrintJob } from "./types";
 import type { MenuItem, PayMethod, Rate, VisitView } from "@/lib/types";
 
@@ -17,6 +17,7 @@ interface V2State {
   isConnected: boolean;
   setConnected: (status: boolean) => void;
   lastPingMs: number;
+  lastPrintJob: V2PrintJob | null;
 
   // Venue Data
   venueName: string;
@@ -97,6 +98,7 @@ export const useV2Store = create<V2State>((set, get) => ({
   isConnected: false,
   setConnected: (status) => set({ isConnected: status }),
   lastPingMs: 0,
+  lastPrintJob: null,
 
   venueName: "Tumble Jungle",
   rates: [
@@ -193,77 +195,85 @@ export const useV2Store = create<V2State>((set, get) => ({
   },
 
   initRealtime: () => {
-    const channel = supabase.channel(REALTIME_CHANNEL, {
-      config: { broadcast: { self: false } },
-    });
-
-    channel
-      .on("broadcast", { event: "visit_created" }, ({ payload }) => {
-        const { visit, staffName, deviceLabel } = payload;
+    return startLiveChannel({
+      onStatus: (connected) => {
+        set({
+          isConnected: connected,
+          lastPingMs: connected ? Date.now() : get().lastPingMs,
+        });
+      },
+      onVisitCreated: (payload) => {
+        const visit = payload.visit as VisitView;
+        const staffName = String(payload.staffName || "Remote Staff");
+        const deviceLabel = String(payload.deviceLabel || "Mobile");
+        if (!visit?.id) return;
         set((state) => {
           const exists = state.visits.some((v) => v.id === visit.id);
-          const next = exists ? state.visits.map((v) => (v.id === visit.id ? visit : v)) : [visit, ...state.visits];
+          const next = exists
+            ? state.visits.map((v) => (v.id === visit.id ? visit : v))
+            : [visit, ...state.visits];
           return { visits: next };
         });
         get().addAuditEvent({
           type: "admission",
           title: `Admission: ${visit.guardianName || "Child"} (${visit.code})`,
           details: `${visit.childCount} child(ren) - Nu. ${visit.dueNu || 0}`,
-          staffName: staffName || "Remote Staff",
-          deviceLabel: deviceLabel || "Mobile",
+          staffName,
+          deviceLabel,
         });
-      })
-      .on("broadcast", { event: "order_placed" }, ({ payload }) => {
-        const { visitId, lines, staffName, deviceLabel, code } = payload;
-        set((state) => {
-          const next = state.visits.map((v) => {
-            if (v.id === visitId) {
-              return { ...v, lines: [...v.lines, ...lines] };
-            }
-            return v;
-          });
-          return { visits: next };
-        });
+      },
+      onOrderPlaced: (payload) => {
+        const visitId = Number(payload.visitId);
+        const lines = (payload.lines || []) as VisitView["lines"];
+        const staffName = String(payload.staffName || "Remote Staff");
+        const deviceLabel = String(payload.deviceLabel || "Mobile");
+        const code = String(payload.code || `Visit #${visitId}`);
+        set((state) => ({
+          visits: state.visits.map((v) =>
+            v.id === visitId ? { ...v, lines: [...v.lines, ...lines] } : v,
+          ),
+        }));
         get().addAuditEvent({
           type: "order",
-          title: `KOT Order: ${code || `Visit #${visitId}`}`,
-          details: lines.map((l: { name: string; qty: number }) => `${l.qty}x ${l.name}`).join(", "),
-          staffName: staffName || "Remote Staff",
-          deviceLabel: deviceLabel || "Mobile",
+          title: `KOT Order: ${code}`,
+          details: lines.map((l) => `${l.qty}x ${l.name}`).join(", "),
+          staffName,
+          deviceLabel,
         });
-      })
-      .on("broadcast", { event: "visit_settled" }, ({ payload }) => {
-        const { visitId, code, amountNu, method, staffName, deviceLabel } = payload;
+      },
+      onVisitSettled: (payload) => {
+        const visitId = Number(payload.visitId);
+        const amountNu = Number(payload.amountNu || 0);
+        const method = String(payload.method || "cash");
+        const code = String(payload.code || `Visit #${visitId}`);
+        const staffName = String(payload.staffName || "Remote Staff");
+        const deviceLabel = String(payload.deviceLabel || "Mobile");
         set((state) => ({
           visits: state.visits.filter((v) => v.id !== visitId),
-          todayNu: state.todayNu + (amountNu || 0),
+          todayNu: state.todayNu + amountNu,
         }));
         get().addAuditEvent({
           type: "settle",
           title: `Settled: ${code} (Nu. ${amountNu})`,
           details: `Paid via ${method.toUpperCase()}`,
-          staffName: staffName || "Remote Staff",
-          deviceLabel: deviceLabel || "Mobile",
+          staffName,
+          deviceLabel,
           amountNu,
         });
-      })
-      .on("broadcast", { event: "print_job" }, ({ payload }) => {
-        const { kind, title, staffName, deviceLabel } = payload;
+      },
+      onPrintJob: (payload) => {
+        const job = payload as unknown as V2PrintJob;
+        if (!job?.title) return;
+        set({ lastPrintJob: job });
         get().addAuditEvent({
           type: "print",
-          title: `Counter Print: ${title}`,
-          details: `Type: ${kind}`,
-          staffName: staffName || "Remote Staff",
-          deviceLabel: deviceLabel || "Mobile",
+          title: `Counter Print: ${job.title}`,
+          details: `Type: ${job.kind || "print"}`,
+          staffName: job.staffName || "Remote Staff",
+          deviceLabel: job.deviceLabel || "Mobile",
         });
-      })
-      .subscribe((status) => {
-        set({ isConnected: status === "SUBSCRIBED" });
-      });
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+      },
+    });
   },
 
   admitChild: async (payload) => {
@@ -341,20 +351,8 @@ export const useV2Store = create<V2State>((set, get) => ({
         visits: state.visits.map((v) => (v.id === tempId ? visit : v)),
       }));
 
-      // Broadcast to other phones & counter via Supabase WebSocket
-      await supabase.channel(REALTIME_CHANNEL).send({
-        type: "broadcast",
-        event: "visit_created",
-        payload: { visit, staffName, deviceLabel },
-      });
-
-      if (printJob) {
-        await supabase.channel(REALTIME_CHANNEL).send({
-          type: "broadcast",
-          event: "print_job",
-          payload: printJob,
-        });
-      }
+      await broadcastLive("visit_created", { visit, staffName, deviceLabel });
+      if (printJob) await broadcastLive("print_job", printJob);
 
       get().addAuditEvent({
         type: "admission",
@@ -419,26 +417,14 @@ export const useV2Store = create<V2State>((set, get) => ({
         }));
       }
 
-      // Broadcast to all phones and counter
-      await supabase.channel(REALTIME_CHANNEL).send({
-        type: "broadcast",
-        event: "order_placed",
-        payload: {
-          visitId: payload.visitId,
-          code: visit?.code || payload.tableNo || "Table Order",
-          lines: items,
-          staffName,
-          deviceLabel,
-        },
+      await broadcastLive("order_placed", {
+        visitId: payload.visitId,
+        code: visit?.code || payload.tableNo || "Table Order",
+        lines: items,
+        staffName,
+        deviceLabel,
       });
-
-      if (printJob) {
-        await supabase.channel(REALTIME_CHANNEL).send({
-          type: "broadcast",
-          event: "print_job",
-          payload: printJob,
-        });
-      }
+      if (printJob) await broadcastLive("print_job", printJob);
 
       get().addAuditEvent({
         type: "order",
@@ -484,27 +470,16 @@ export const useV2Store = create<V2State>((set, get) => ({
 
       const { printJob, receiptNo } = await res.json();
 
-      await supabase.channel(REALTIME_CHANNEL).send({
-        type: "broadcast",
-        event: "visit_settled",
-        payload: {
-          visitId: payload.visitId,
-          code: visitToSettle?.code || `Visit #${payload.visitId}`,
-          amountNu: payload.amountNu,
-          method: payload.method,
-          receiptNo,
-          staffName,
-          deviceLabel,
-        },
+      await broadcastLive("visit_settled", {
+        visitId: payload.visitId,
+        code: visitToSettle?.code || `Visit #${payload.visitId}`,
+        amountNu: payload.amountNu,
+        method: payload.method,
+        receiptNo,
+        staffName,
+        deviceLabel,
       });
-
-      if (printJob) {
-        await supabase.channel(REALTIME_CHANNEL).send({
-          type: "broadcast",
-          event: "print_job",
-          payload: printJob,
-        });
-      }
+      if (printJob) await broadcastLive("print_job", printJob);
 
       get().addAuditEvent({
         type: "settle",
@@ -541,12 +516,7 @@ export const useV2Store = create<V2State>((set, get) => ({
       timestamp: new Date().toISOString(),
     };
 
-    // Broadcast print command to counter listener & print daemon
-    await supabase.channel(REALTIME_CHANNEL).send({
-      type: "broadcast",
-      event: "print_job",
-      payload: printJob,
-    });
+    await broadcastLive("print_job", printJob);
 
     // Also persist in print_jobs queue in DB
     fetch("/api/v2/print", {
