@@ -6,13 +6,14 @@ import {
   getSettings,
   listCategories,
   listMenu,
+  listRecentPurchases,
   listStaff,
   listStockItems,
 } from "@/lib/domain";
 
 export async function GET() {
   try {
-    const [settings, day, menu, stock, categories, staff, dayReport, catalog] =
+    const [settings, day, menu, stock, categories, staff, dayReport, catalog, purchases] =
       await Promise.all([
         getSettings(),
         daySummary(),
@@ -22,6 +23,7 @@ export async function GET() {
         listStaff(),
         buildDayReport().catch(() => null),
         catalogToday().catch(() => ({ dishes: {}, play: {} })),
+        listRecentPurchases(40).catch(() => []),
       ]);
 
     return NextResponse.json({
@@ -54,6 +56,7 @@ export async function GET() {
       dayReport,
       menu,
       stock,
+      purchases,
       categories,
       staff,
       catalogToday: catalog,
