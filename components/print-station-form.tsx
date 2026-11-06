@@ -4,7 +4,7 @@ import { useState } from "react";
 import { savePrintStationAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { pingPrintStation, writePrintStationConfig } from "@/lib/print-station";
+import { enqueueTestPrint, pingPrintStation, writePrintStationConfig } from "@/lib/print-station";
 
 export function PrintStationForm({ token, on }: { url?: string; token: string; on?: boolean }) {
   const [draftToken, setDraftToken] = useState(token || "tumble-print");
@@ -84,6 +84,22 @@ export function PrintStationForm({ token, on }: { url?: string; token: string; o
             }}
           >
             Test agent
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11"
+            onClick={async () => {
+              setPing("Sending test slip…");
+              const result = await enqueueTestPrint();
+              setPing(
+                result.ok
+                  ? "Test slip queued — watch the agent window and the printer."
+                  : result.error || "Test print failed.",
+              );
+            }}
+          >
+            Send test print
           </Button>
         </div>
         {ping ? <p className="text-sm text-muted-foreground">{ping}</p> : null}

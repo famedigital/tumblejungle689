@@ -1,4 +1,5 @@
 import { getSession } from "@/lib/auth";
+import { getSettings } from "@/lib/domain";
 import { enqueuePrintJob } from "@/lib/print-jobs";
 import { can } from "@/lib/types";
 
@@ -10,6 +11,10 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, error: "Sign in again." }, { status: 401 });
   }
   try {
+    const settings = await getSettings();
+    if (!settings.printAgentOn) {
+      return Response.json({ ok: false, disabled: true, error: "Print station is off in Admin." }, { status: 409 });
+    }
     const body = (await request.json()) as { kind?: string; mode?: string; text?: string };
     const kind = String(body.kind || body.mode || "slip");
     const text = String(body.text || "");

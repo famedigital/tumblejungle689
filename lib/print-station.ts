@@ -22,13 +22,12 @@ export function readPrintStationConfig(fallback?: Partial<PrintStationConfig>): 
   }
   if (fallback?.on != null) on = Boolean(fallback.on) || on;
   if (!token) token = (fallback?.token || "").trim();
-  if (!on) return null;
-  return { token: token || "tumble-print", on: true };
+  return { token: token || "tumble-print", on };
 }
 
 export function writePrintStationConfig(config: PrintStationConfig) {
   try {
-    localStorage.setItem(LS_ON, config.on === false ? "0" : "1");
+    localStorage.setItem(LS_ON, config.on ? "1" : "0");
     localStorage.setItem(LS_TOKEN, config.token || "tumble-print");
   } catch {
     /* ignore */
@@ -54,18 +53,31 @@ export function slipTextForPrint(mode: PrintMode): string {
   return parts.join("\n\n---\n\n");
 }
 
-async function enqueueCloud(mode: PrintMode, text: string): Promise<boolean> {
+async function slipTextWithRetry(mode: PrintMode): Promise<string> {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const text = slipTextForPrint(mode);
+    if (text) return text;
+    await new Promise((resolve) => window.setTimeout(resolve, 100));
+  }
+  return "";
+}
+
+type EnqueueResult = "queued" | "disabled" | "failed";
+
+async function enqueueCloud(mode: PrintMode, text: string): Promise<EnqueueResult> {
   try {
     const res = await fetch("/api/print/enqueue", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ kind: mode, mode, text }),
+      credentials: "same-origin",
     });
-    if (!res.ok) return false;
-    const body = (await res.json().catch(() => null)) as { ok?: boolean } | null;
-    return Boolean(body?.ok);
+    const body = (await res.json().catch(() => null)) as { ok?: boolean; disabled?: boolean } | null;
+    if (res.status === 409 || body?.disabled) return "disabled";
+    if (!res.ok || !body?.ok) return "failed";
+    return "queued";
   } catch {
-    return false;
+    return "failed";
   }
 }
 
@@ -80,23 +92,61 @@ function browserPrint(mode: PrintMode) {
   window.print();
 }
 
+function notify(message: string) {
+  try {
+    window.alert(message);
+  } catch {
+    /* ignore */
+  }
+}
+
 /**
- * Queue slip for the PC print agent (cloud poll). Falls back to window.print().
+ * When print station is ON (server or local): queue only — never open the browser print dialog.
+ * When OFF: normal window.print().
  */
 export async function thermalPrint(
   mode: PrintMode,
   fallback?: Partial<PrintStationConfig>,
 ): Promise<"station" | "browser"> {
-  const config = readPrintStationConfig(fallback);
-  const text = slipTextForPrint(mode);
-  if (config?.on && text) {
-    document.body.dataset.print = mode;
-    const ok = await enqueueCloud(mode, text);
-    delete document.body.dataset.print;
-    if (ok) return "station";
+  const text = await slipTextWithRetry(mode);
+
+  // Ask the server by attempting enqueue — source of truth for “station on”.
+  if (text) {
+    const result = await enqueueCloud(mode, text);
+    if (result === "queued") {
+      return "station";
+    }
+    if (result === "disabled") {
+      // Station explicitly off in Admin — only then use system print dialog.
+      browserPrint(mode);
+      return "browser";
+    }
+    // Station is on (or unknown) but queue failed — never open the Windows/Chrome dialog.
+    notify("Print queue failed. Keep Start Print Agent.bat open, then try again.");
+    return "station";
   }
+
+  const stationLikelyOn = Boolean(readPrintStationConfig(fallback)?.on || fallback?.on);
+  if (stationLikelyOn) {
+    notify("Nothing on screen to print yet. Open the receipt, then Print again.");
+    return "station";
+  }
+
   browserPrint(mode);
   return "browser";
+}
+
+export async function enqueueTestPrint(): Promise<{ ok: boolean; error?: string }> {
+  const text = [
+    "TUMBLE JUNGLE",
+    "TEST PRINT",
+    new Date().toLocaleString("en-GB", { timeZone: "Asia/Thimphu" }),
+    "If you see this, the agent and printer link work.",
+  ].join("\n");
+  const result = await enqueueCloud("receipt", text);
+  if (result === "queued") return { ok: true };
+  if (result === "disabled") return { ok: false, error: "Turn on “Send till prints…” and Save first." };
+  return { ok: false, error: "Queue failed — sign in as admin/cashier and try again." };
 }
 
 export async function pingPrintStation(): Promise<{ online: boolean; ageSec: number | null; queued: number }> {
