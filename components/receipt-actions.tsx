@@ -4,6 +4,20 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
+function printReceipt() {
+  document.body.dataset.print = "receipt";
+  let closed = false;
+  const finish = () => {
+    if (closed) return;
+    closed = true;
+    delete document.body.dataset.print;
+    window.removeEventListener("afterprint", finish);
+  };
+  window.addEventListener("afterprint", finish);
+  window.setTimeout(finish, 4000);
+  window.print();
+}
+
 export function ReceiptActions() {
   const router = useRouter();
 
@@ -12,7 +26,7 @@ export function ReceiptActions() {
       if (event.repeat) return;
       if (event.key === "Enter") {
         event.preventDefault();
-        window.print();
+        printReceipt();
         return;
       }
       if (event.key !== "Escape") return;
@@ -25,7 +39,7 @@ export function ReceiptActions() {
 
   return (
     <div className="no-print">
-      <button type="button" className="receipt-print" onClick={() => window.print()}>
+      <button type="button" className="receipt-print" onClick={() => printReceipt()}>
         Print
       </button>
       <Link href="/cashier" className="receipt-back">

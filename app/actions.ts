@@ -5,8 +5,10 @@ import { clearSession, findAdminBySecret, findStaffBySecret, getSession, require
 import {
   addCategory,
   addMenuItem,
+  adjustStock,
   counterCategory,
   listMenu,
+  receivePurchase,
   addPlayBlock,
   addStaff,
   addTabItem,
@@ -54,7 +56,7 @@ function messageOf(error: unknown): string {
 
 function finish(formData: FormData, fallback: string, ok: string, desk?: string): never {
   const back = text(formData, "back");
-  if (back === "/admin/products" || back === "/admin/bank" || back === "/admin/receipt") {
+  if (back === "/admin/products" || back === "/admin/bank" || back === "/admin/receipt" || back === "/admin/stock") {
     const params = new URLSearchParams({ ok });
     const id = desk || text(formData, "desk");
     if (id) params.set("desk", id);
@@ -436,7 +438,12 @@ export async function addMenuItemAction(formData: FormData) {
 }
 
 export async function updateMenuItemAction(formData: FormData) {
-  const path = text(formData, "back") === "/admin/products" ? "/admin/products" : "/admin";
+  const path =
+    text(formData, "back") === "/admin/products"
+      ? "/admin/products"
+      : text(formData, "back") === "/admin/stock"
+        ? "/admin/stock"
+        : "/admin";
   await run(path, undefined, async () => {
     await requireArea("admin");
     const id = Number(formData.get("id"));
@@ -445,8 +452,61 @@ export async function updateMenuItemAction(formData: FormData) {
       priceNu: Number(formData.get("priceNu")),
       active: formData.get("active") === "on",
       categoryId: Number(formData.get("categoryId")) || undefined,
+      trackStock: formData.get("stockFields") === "1" ? formData.get("trackStock") === "on" : undefined,
+      reorderQty: formData.has("reorderQty") ? Number(formData.get("reorderQty")) : undefined,
     });
-    finish(formData, "/admin", "Menu updated", `item-${id}`);
+    finish(formData, path === "/admin" ? "/admin" : path, "Menu updated", `item-${id}`);
+  });
+}
+
+export async function adjustStockAction(formData: FormData) {
+  await run("/admin/stock", undefined, async () => {
+    const session = await requireArea("admin");
+    await adjustStock(
+      Number(formData.get("itemId")),
+      Number(formData.get("delta")),
+      text(formData, "note"),
+      { id: session.staffId, name: session.name },
+    );
+    redirect("/admin/stock?ok=Stock%20adjusted");
+  });
+}
+
+export async function receivePurchaseAction(formData: FormData) {
+  await run("/admin/stock", undefined, async () => {
+    const session = await requireArea("admin");
+    const raw = text(formData, "linesJson");
+    let lines: { itemId: number; qty: number; unitCostNu: number }[] = [];
+    try {
+      lines = JSON.parse(raw) as { itemId: number; qty: number; unitCostNu: number }[];
+    } catch {
+      throw new Error("Purchase lines were not valid.");
+    }
+    const result = await receivePurchase({
+      supplierName: text(formData, "supplierName"),
+      note: text(formData, "note"),
+      lines,
+      actor: { id: session.staffId, name: session.name },
+    });
+    redirect(`/admin/stock?ok=${encodeURIComponent(`Received PO-${result.purchaseId}`)}`);
+  });
+}
+
+export async function enableStockTrackingAction(formData: FormData) {
+  await run("/admin/stock", undefined, async () => {
+    await requireArea("admin");
+    const id = Number(formData.get("itemId"));
+    const item = (await listMenu(undefined, true)).find((row) => row.id === id);
+    if (!item) throw new Error("That item was not found.");
+    await updateMenuItem(id, {
+      name: item.name,
+      priceNu: item.priceNu,
+      active: item.active,
+      categoryId: item.categoryId,
+      trackStock: true,
+      reorderQty: Number(formData.get("reorderQty") || item.reorderQty || 5),
+    });
+    redirect("/admin/stock?ok=Tracking%20on");
   });
 }
 

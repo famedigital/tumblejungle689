@@ -279,6 +279,7 @@ function ItemDesk({
       <form action={updateMenuItemAction} className="grid gap-3">
         <input type="hidden" name="back" value="/admin/products" />
         <input type="hidden" name="id" value={item.id} />
+        <input type="hidden" name="stockFields" value="1" />
         <label className="space-y-1 text-sm">
           Name
           <Input name="name" defaultValue={item.name} className="h-11" required />
@@ -303,6 +304,20 @@ function ItemDesk({
           <input type="checkbox" name="active" defaultChecked={item.active} />
           On the menu
         </label>
+        <label className="flex h-11 items-center gap-2 text-sm">
+          <input type="checkbox" name="trackStock" defaultChecked={item.trackStock} />
+          Track stock (ready-made)
+        </label>
+        <label className="space-y-1 text-sm">
+          Reorder at
+          <Input name="reorderQty" type="number" min={0} defaultValue={item.reorderQty} className="h-11" />
+        </label>
+        {item.trackStock ? (
+          <p className="text-sm text-muted-foreground">
+            On hand {item.stockQty}
+            {item.costNu > 0 ? ` · cost ${formatNu(item.costNu)}` : ""}
+          </p>
+        ) : null}
         <Button type="submit" className="h-11">
           Save dish
         </Button>

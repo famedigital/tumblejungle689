@@ -240,9 +240,14 @@ function payFirstBlock(visit: VisitView, op: Extract<TillOp, { kind: "payPlay" }
   };
 }
 
+function assertStock(item: MenuItem) {
+  if (item.trackStock && item.stockQty < 1) throw new Error(`Out of stock: ${item.name}`);
+}
+
 function walkIn(op: Extract<TillOp, { kind: "addItem" }>, menu: MenuItem[]): VisitView {
   const item = menu.find((row) => row.id === op.itemId && row.outlet === op.outlet);
   if (!item) throw new Error("That item is not on this counter.");
+  assertStock(item);
   const code = op.code || "WALKIN";
   return {
     id: tempId(op.visitKey),
@@ -258,7 +263,7 @@ function walkIn(op: Extract<TillOp, { kind: "addItem" }>, menu: MenuItem[]): Vis
     closedAt: null,
     tableNo: "",
     blocks: [],
-    lines: [freshLine(op.lineKey, item.name, item.priceNu, item.outlet)],
+    lines: [freshLine(op.lineKey, item)],
     payments: [],
     dueNu: item.priceNu,
     overtime: null,
@@ -269,6 +274,7 @@ function walkIn(op: Extract<TillOp, { kind: "addItem" }>, menu: MenuItem[]): Vis
 function addLine(visit: VisitView, op: Extract<TillOp, { kind: "addItem" }>, menu: MenuItem[]): VisitView {
   const item = menu.find((row) => row.id === op.itemId && row.outlet === op.outlet);
   if (!item) throw new Error("That item is not on this counter.");
+  assertStock(item);
   const existing = visit.lines.find(
     (line) => !line.paid && line.outlet === item.outlet && line.name === item.name && line.unitNu === item.priceNu,
   );
@@ -279,7 +285,7 @@ function addLine(visit: VisitView, op: Extract<TillOp, { kind: "addItem" }>, men
       lines: visit.lines.map((line) => (line === existing ? { ...line, qty, amountNu: qty * line.unitNu } : line)),
     };
   }
-  return { ...visit, lines: [...visit.lines, freshLine(op.lineKey, item.name, item.priceNu, item.outlet)] };
+  return { ...visit, lines: [...visit.lines, freshLine(op.lineKey, item)] };
 }
 
 function qty(visit: VisitView, key: string, delta: number): VisitView {
@@ -432,15 +438,16 @@ function money(
   return rows;
 }
 
-function freshLine(key: string, name: string, price: number, outlet: Outlet): TabLine {
+function freshLine(key: string, item: MenuItem): TabLine {
   return {
     id: tempId(key),
     lineKey: key,
-    name,
+    itemId: item.id,
+    name: item.name,
     qty: 1,
-    unitNu: price,
-    amountNu: price,
-    outlet,
+    unitNu: item.priceNu,
+    amountNu: item.priceNu,
+    outlet: item.outlet,
     paid: false,
     firedQty: 0,
     deliveredQty: 0,

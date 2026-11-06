@@ -42,6 +42,32 @@ export type MenuItem = {
   name: string;
   priceNu: number;
   active: boolean;
+  /** Ready-made retail (bottled drinks, chips): track on-hand qty. */
+  trackStock: boolean;
+  stockQty: number;
+  reorderQty: number;
+  /** Purchase unit cost — owner/admin only; never show on till. */
+  costNu: number;
+};
+
+export type StockMoveKind = "purchase" | "sale" | "adjust" | "void_return";
+
+export type StockItem = MenuItem & {
+  soldToday: number;
+  low: boolean;
+};
+
+export type Supplier = {
+  id: number;
+  name: string;
+  phone: string;
+  active: boolean;
+};
+
+export type PurchaseLineInput = {
+  itemId: number;
+  qty: number;
+  unitCostNu: number;
 };
 
 export type PlayBlock = {
@@ -57,6 +83,7 @@ export type PlayBlock = {
 export type TabLine = {
   id: number;
   lineKey?: string;
+  itemId?: number | null;
   name: string;
   qty: number;
   unitNu: number;

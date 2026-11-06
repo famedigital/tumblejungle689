@@ -1,7 +1,12 @@
-import { formatNu } from "@/lib/format";
-
 function isCompLine(name: string) {
   return name.trim().toLowerCase() === "complimentary";
+}
+
+/** Compact Nu for 80mm amount column (avoids wrap). */
+function thermalNu(amount: number) {
+  const n = Math.round(amount);
+  const abs = Math.abs(n).toLocaleString("en-IN");
+  return n < 0 ? `-Nu ${abs}` : `Nu ${abs}`;
 }
 
 export function Receipt({
@@ -57,16 +62,18 @@ export function Receipt({
   return (
     <article className="print-receipt">
       <header className="receipt-head">
-        <p className="receipt-kicker">Receipt</p>
+        <p className="receipt-kicker">Tax invoice / Receipt</p>
         <h1 className="receipt-venue">{venue}</h1>
         {address ? <p className="receipt-address">{address}</p> : null}
         {note ? <p className="receipt-address">{note}</p> : null}
       </header>
 
+      <div className="receipt-rule" aria-hidden />
+
       <section className="receipt-meta" aria-label="Bill details">
         {number ? (
           <p className="receipt-row">
-            <span>No.</span>
+            <span>Receipt</span>
             <span className="receipt-code">#{number}</span>
           </p>
         ) : null}
@@ -100,10 +107,10 @@ export function Receipt({
         {items.map((line, index) => (
           <li key={`${line.name}-${index}`} className="receipt-line">
             <span className="receipt-item">
-              {line.qty > 1 ? <span className="receipt-qty">{line.qty}×</span> : null}
+              <span className="receipt-qty">{line.qty}×</span>
               {line.name}
             </span>
-            <span className="receipt-amt">{formatNu(line.amount)}</span>
+            <span className="receipt-amt">{thermalNu(line.amount)}</span>
           </li>
         ))}
       </ul>
@@ -115,30 +122,30 @@ export function Receipt({
           <>
             <p className="receipt-row">
               <span>Subtotal</span>
-              <span className="receipt-amt">{formatNu(subtotal)}</span>
+              <span className="receipt-amt">{thermalNu(subtotal)}</span>
             </p>
             <p className="receipt-row">
               <span>Complimentary</span>
-              <span className="receipt-amt">{formatNu(discount)}</span>
+              <span className="receipt-amt">{thermalNu(discount)}</span>
             </p>
           </>
         ) : null}
         <p className="receipt-row receipt-total">
           <span>Total</span>
-          <span className="receipt-amt">{formatNu(billTotal)}</span>
+          <span className="receipt-amt">{thermalNu(billTotal)}</span>
         </p>
         {fullComp ? <p className="receipt-comp">No charge</p> : null}
         {cash > 0 ? (
           <p className="receipt-row receipt-pay">
             <span>Cash</span>
-            <span className="receipt-amt">{formatNu(cash)}</span>
+            <span className="receipt-amt">{thermalNu(cash)}</span>
           </p>
         ) : null}
         {bankRows.map((row, index) => (
           <div key={`${row.name}-${row.ref}-${index}`} className="receipt-tender">
             <p className="receipt-row receipt-pay">
               <span>{row.name}</span>
-              <span className="receipt-amt">{formatNu(row.amount)}</span>
+              <span className="receipt-amt">{thermalNu(row.amount)}</span>
             </p>
             {row.ref ? (
               <p className="receipt-row receipt-jr">
@@ -150,6 +157,8 @@ export function Receipt({
         ))}
       </section>
 
+      <div className="receipt-rule" aria-hidden />
+
       <footer className="receipt-foot">
         <p className="receipt-thanks">{thanks || "Thank you"}</p>
         {houseRules.length ? (
@@ -159,7 +168,7 @@ export function Receipt({
             ))}
           </ul>
         ) : null}
-        <p className="receipt-end">— end —</p>
+        <p className="receipt-end">— end of receipt —</p>
       </footer>
     </article>
   );

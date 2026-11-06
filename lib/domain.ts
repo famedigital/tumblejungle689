@@ -1,5 +1,15 @@
 import { randomBytes } from "node:crypto";
-import { ensureJournalColumn, ensureTillEvents, ensureTillSync, makeSecret, putSetting, query, tx, type Query } from "@/lib/db";
+import {
+  ensureJournalColumn,
+  ensureStockSchema,
+  ensureTillEvents,
+  ensureTillSync,
+  makeSecret,
+  putSetting,
+  query,
+  tx,
+  type Query,
+} from "@/lib/db";
 import { toStaticEmv } from "@/lib/emv";
 import { addMinutes, minutesLeft, normalizePhone, thimphuDayRange } from "@/lib/format";
 import { quoteOvertime, type OvertimeQuote } from "@/lib/overtime";
@@ -143,6 +153,7 @@ export async function saveJournalScan(enabled: boolean) {
 }
 
 export async function listMenu(outlet?: Outlet, includeInactive = false): Promise<MenuItem[]> {
+  await ensureStockSchema().catch(() => undefined);
   const rows = await query().many<{
     id: number;
     category_id: number;
@@ -151,8 +162,16 @@ export async function listMenu(outlet?: Outlet, includeInactive = false): Promis
     name: string;
     price_nu: number;
     active: number;
+    track_stock: number;
+    stock_qty: number;
+    reorder_qty: number;
+    cost_nu: number;
   }>(
-    `SELECT i.id, i.category_id, c.name AS category, c.outlet, i.name, i.price_nu, i.active
+    `SELECT i.id, i.category_id, c.name AS category, c.outlet, i.name, i.price_nu, i.active,
+            COALESCE(i.track_stock, 0) AS track_stock,
+            COALESCE(i.stock_qty, 0) AS stock_qty,
+            COALESCE(i.reorder_qty, 0) AS reorder_qty,
+            COALESCE(i.cost_nu, 0) AS cost_nu
      FROM menu_items i
      JOIN menu_categories c ON c.id = i.category_id
      WHERE (?::text IS NULL OR c.outlet = ?)
@@ -168,6 +187,10 @@ export async function listMenu(outlet?: Outlet, includeInactive = false): Promis
     name: row.name,
     priceNu: row.price_nu,
     active: row.active === 1,
+    trackStock: row.track_stock === 1,
+    stockQty: Number(row.stock_qty) || 0,
+    reorderQty: Number(row.reorder_qty) || 0,
+    costNu: Number(row.cost_nu) || 0,
   }));
 }
 
@@ -191,25 +214,256 @@ export async function addMenuItem(input: { categoryId: number; name: string; pri
 
 export async function updateMenuItem(
   id: number,
-  input: { name: string; priceNu: number; active: boolean; categoryId?: number },
+  input: {
+    name: string;
+    priceNu: number;
+    active: boolean;
+    categoryId?: number;
+    trackStock?: boolean;
+    reorderQty?: number;
+  },
 ) {
+  await ensureStockSchema();
   const name = input.name.trim();
   if (!name) throw new Error("Item name is required.");
   if (!Number.isFinite(input.priceNu) || input.priceNu < 0) throw new Error("Enter a price.");
+  const track = input.trackStock == null ? null : input.trackStock ? 1 : 0;
+  const reorder = input.reorderQty == null ? null : Math.max(0, Math.round(input.reorderQty));
   if (input.categoryId) {
     await query().exec(
-      "UPDATE menu_items SET name = ?, price_nu = ?, active = ?, category_id = ? WHERE id = ?",
-      [name, Math.round(input.priceNu), input.active ? 1 : 0, input.categoryId, id],
+      `UPDATE menu_items
+       SET name = ?, price_nu = ?, active = ?, category_id = ?,
+           track_stock = COALESCE(?, track_stock),
+           reorder_qty = COALESCE(?, reorder_qty)
+       WHERE id = ?`,
+      [name, Math.round(input.priceNu), input.active ? 1 : 0, input.categoryId, track, reorder, id],
     );
   } else {
-    await query().exec("UPDATE menu_items SET name = ?, price_nu = ?, active = ? WHERE id = ?", [
-      name,
-      Math.round(input.priceNu),
-      input.active ? 1 : 0,
-      id,
-    ]);
+    await query().exec(
+      `UPDATE menu_items
+       SET name = ?, price_nu = ?, active = ?,
+           track_stock = COALESCE(?, track_stock),
+           reorder_qty = COALESCE(?, reorder_qty)
+       WHERE id = ?`,
+      [name, Math.round(input.priceNu), input.active ? 1 : 0, track, reorder, id],
+    );
   }
   await putSetting("menu_is_sample", "0");
+}
+
+type StockActor = { id: number; name: string };
+
+async function writeStockMove(
+  database: Query,
+  itemId: number,
+  kind: "purchase" | "sale" | "adjust" | "void_return",
+  qty: number,
+  unitCostNu: number,
+  ref: string,
+  staffId: number | null,
+) {
+  await database.exec(
+    `INSERT INTO stock_moves (item_id, kind, qty, unit_cost_nu, ref, staff_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [itemId, kind, qty, Math.max(0, Math.round(unitCostNu)), ref, staffId, nowIso()],
+  );
+}
+
+async function consumeStockOn(
+  database: Query,
+  itemId: number,
+  qty: number,
+  ref: string,
+  staffId: number | null = null,
+) {
+  if (qty <= 0) return;
+  const locked = await database.one<{ stock_qty: number; name: string; track_stock: number }>(
+    "SELECT stock_qty, name, track_stock FROM menu_items WHERE id = ? FOR UPDATE",
+    [itemId],
+  );
+  if (!locked || locked.track_stock !== 1) return;
+  if (locked.stock_qty < qty) throw new Error(`Out of stock: ${locked.name}`);
+  await database.exec("UPDATE menu_items SET stock_qty = stock_qty - ? WHERE id = ?", [qty, itemId]);
+  await writeStockMove(database, itemId, "sale", -qty, 0, ref, staffId);
+}
+
+async function restoreStockOn(
+  database: Query,
+  itemId: number,
+  qty: number,
+  ref: string,
+  staffId: number | null = null,
+) {
+  if (qty <= 0) return;
+  const locked = await database.one<{ track_stock: number }>(
+    "SELECT track_stock FROM menu_items WHERE id = ? FOR UPDATE",
+    [itemId],
+  );
+  if (!locked || locked.track_stock !== 1) return;
+  await database.exec("UPDATE menu_items SET stock_qty = stock_qty + ? WHERE id = ?", [qty, itemId]);
+  await writeStockMove(database, itemId, "void_return", qty, 0, ref, staffId);
+}
+
+/** Deduct ready-made stock for a sale (blocks when empty). */
+export async function consumeStock(itemId: number, qty: number, ref: string, staffId: number | null = null) {
+  await ensureStockSchema();
+  await tx(async (database) => consumeStockOn(database, itemId, qty, ref, staffId));
+}
+
+/** Restock after void / qty reduction of tracked items. */
+export async function restoreStock(itemId: number, qty: number, ref: string, staffId: number | null = null) {
+  await ensureStockSchema();
+  await tx(async (database) => restoreStockOn(database, itemId, qty, ref, staffId));
+}
+
+export async function listStockItems(): Promise<
+  (MenuItem & { soldToday: number; low: boolean })[]
+> {
+  await ensureStockSchema();
+  const [menu, today] = await Promise.all([listMenu(undefined, true), catalogToday()]);
+  return menu
+    .filter((item) => item.trackStock)
+    .map((item) => ({
+      ...item,
+      soldToday: today.dishes[item.id] ?? 0,
+      low: item.stockQty <= item.reorderQty,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function listSuppliers(): Promise<{ id: number; name: string; phone: string; active: boolean }[]> {
+  await ensureStockSchema();
+  const rows = await query().many<{ id: number; name: string; phone: string; active: number }>(
+    "SELECT id, name, phone, active FROM suppliers WHERE active = 1 ORDER BY name",
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    phone: row.phone,
+    active: row.active === 1,
+  }));
+}
+
+export async function adjustStock(
+  itemId: number,
+  delta: number,
+  note: string,
+  actor: StockActor,
+): Promise<MenuItem> {
+  await ensureStockSchema();
+  const change = Math.round(delta);
+  if (!change) throw new Error("Enter how many to add or remove.");
+  const reason = note.trim() || "Stock adjust";
+  await tx(async (database) => {
+    const locked = await database.one<{ stock_qty: number; track_stock: number; name: string }>(
+      "SELECT stock_qty, track_stock, name FROM menu_items WHERE id = ? FOR UPDATE",
+      [itemId],
+    );
+    if (!locked) throw new Error("That item was not found.");
+    if (locked.track_stock !== 1) throw new Error("Turn on stock tracking for this item first.");
+    const next = locked.stock_qty + change;
+    if (next < 0) throw new Error(`Not enough stock for ${locked.name}.`);
+    await database.exec("UPDATE menu_items SET stock_qty = ? WHERE id = ?", [next, itemId]);
+    await writeStockMove(database, itemId, "adjust", change, 0, reason, actor.id);
+  });
+  const item = (await listMenu(undefined, true)).find((row) => row.id === itemId);
+  if (!item) throw new Error("That item was not found.");
+  return item;
+}
+
+export async function receivePurchase(input: {
+  supplierId?: number | null;
+  supplierName: string;
+  note?: string;
+  lines: { itemId: number; qty: number; unitCostNu: number }[];
+  actor: StockActor;
+}): Promise<{ purchaseId: number; totalNu: number }> {
+  await ensureStockSchema();
+  const supplierName = input.supplierName.trim();
+  if (!supplierName) throw new Error("Enter the supplier name.");
+  const lines = input.lines
+    .map((line) => ({
+      itemId: line.itemId,
+      qty: Math.round(line.qty),
+      unitCostNu: Math.max(0, Math.round(line.unitCostNu)),
+    }))
+    .filter((line) => line.qty > 0);
+  if (!lines.length) throw new Error("Add at least one item to receive.");
+  const totalNu = lines.reduce((sum, line) => sum + line.qty * line.unitCostNu, 0);
+
+  let supplierId = input.supplierId ?? null;
+  if (!supplierId) {
+    const existing = await query().one<{ id: number }>(
+      "SELECT id FROM suppliers WHERE lower(name) = lower(?) AND active = 1",
+      [supplierName],
+    );
+    if (existing) supplierId = existing.id;
+    else {
+      supplierId = await query().insert("INSERT INTO suppliers (name, phone, active) VALUES (?, '', 1)", [
+        supplierName,
+      ]);
+    }
+  }
+
+  const purchaseId = await tx(async (database) => {
+    const id = await database.insert(
+      `INSERT INTO purchases (supplier_id, supplier_name, note, total_nu, staff_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [supplierId, supplierName, input.note?.trim() ?? "", totalNu, input.actor.id, nowIso()],
+    );
+    for (const line of lines) {
+      const amount = line.qty * line.unitCostNu;
+      await database.exec(
+        `INSERT INTO purchase_lines (purchase_id, item_id, qty, unit_cost_nu, amount_nu)
+         VALUES (?, ?, ?, ?, ?)`,
+        [id, line.itemId, line.qty, line.unitCostNu, amount],
+      );
+      const locked = await database.one<{ track_stock: number; name: string }>(
+        "SELECT track_stock, name FROM menu_items WHERE id = ? FOR UPDATE",
+        [line.itemId],
+      );
+      if (!locked) throw new Error("A purchase line points to a missing item.");
+      if (locked.track_stock !== 1) {
+        await database.exec("UPDATE menu_items SET track_stock = 1 WHERE id = ?", [line.itemId]);
+      }
+      await database.exec(
+        "UPDATE menu_items SET stock_qty = stock_qty + ?, cost_nu = ? WHERE id = ?",
+        [line.qty, line.unitCostNu, line.itemId],
+      );
+      await writeStockMove(database, line.itemId, "purchase", line.qty, line.unitCostNu, `PO-${id}`, input.actor.id);
+    }
+    return id;
+  });
+  return { purchaseId, totalNu };
+}
+
+export async function listRecentPurchases(limit = 20): Promise<
+  { id: number; supplierName: string; totalNu: number; note: string; createdAt: string; lineCount: number }[]
+> {
+  await ensureStockSchema();
+  const rows = await query().many<{
+    id: number;
+    supplier_name: string;
+    total_nu: number;
+    note: string;
+    created_at: string;
+    line_count: number;
+  }>(
+    `SELECT p.id, p.supplier_name, p.total_nu, p.note, p.created_at,
+            (SELECT COUNT(*) FROM purchase_lines l WHERE l.purchase_id = p.id) AS line_count
+     FROM purchases p
+     ORDER BY p.id DESC
+     LIMIT ?`,
+    [Math.max(1, Math.min(100, limit))],
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    supplierName: row.supplier_name,
+    totalNu: row.total_nu,
+    note: row.note,
+    createdAt: row.created_at,
+    lineCount: Number(row.line_count) || 0,
+  }));
 }
 
 export async function catalogToday(): Promise<{ dishes: Record<number, number>; play: Record<number, number> }> {
@@ -281,6 +535,7 @@ type LineRow = {
   visit_id: number;
   id: number;
   client_key: string | null;
+  item_id: number | null;
   name: string;
   qty: number;
   unit_nu: number;
@@ -326,7 +581,7 @@ async function hydrateMany(rows: VisitRow[]): Promise<VisitView[]> {
       ids,
     ),
     query().many<LineRow>(
-      `SELECT visit_id, id, client_key, name, qty, unit_nu, amount_nu, outlet, paid, fired_qty, delivered_qty
+      `SELECT visit_id, id, client_key, item_id, name, qty, unit_nu, amount_nu, outlet, paid, fired_qty, delivered_qty
        FROM tab_lines WHERE visit_id IN (${marks}) ORDER BY id`,
       ids,
     ),
@@ -370,6 +625,7 @@ function toVisit(
   const mappedLines: TabLine[] = lines.map((line) => ({
     id: line.id,
     lineKey: line.client_key || `line:${line.id}`,
+    itemId: line.item_id,
     name: line.name,
     qty: line.qty,
     unitNu: line.unit_nu,
@@ -711,14 +967,19 @@ export async function addPlayBlock(visitId: number, minutes: number, phone = "")
 }
 
 export async function removeTabLine(lineId: number): Promise<VisitView> {
-  const line = await query().one<{ id: number; visit_id: number; paid: number; fired_qty: number }>(
-    "SELECT id, visit_id, paid, fired_qty FROM tab_lines WHERE id = ?",
-    [lineId],
-  );
+  const line = await query().one<{
+    id: number;
+    visit_id: number;
+    paid: number;
+    fired_qty: number;
+    item_id: number | null;
+    qty: number;
+  }>("SELECT id, visit_id, paid, fired_qty, item_id, qty FROM tab_lines WHERE id = ?", [lineId]);
   if (!line || line.paid === 1) throw new Error("That item is already paid.");
   if ((line.fired_qty ?? 0) > 0) throw new Error("The kitchen already has this dish. A manager can void it.");
-  await requireOpen(line.visit_id);
+  const visit = await requireOpen(line.visit_id);
   await query().exec("DELETE FROM tab_lines WHERE id = ? AND paid = 0 AND fired_qty = 0", [lineId]);
+  if (line.item_id) await restoreStock(line.item_id, line.qty, visit.code);
   return (await getVisitById(line.visit_id))!;
 }
 
@@ -879,10 +1140,17 @@ export async function voidTableOrder(visitId: number, actor: TillActor): Promise
   if (foodDue <= 0 && !visit.lines.some((line) => !line.paid)) {
     throw new Error("There is no open table order to void.");
   }
+  const unpaid = await query().many<{ item_id: number | null; qty: number }>(
+    "SELECT item_id, qty FROM tab_lines WHERE visit_id = ? AND paid = 0",
+    [visitId],
+  );
   await tx(async (database) => {
     await writeTillEvent(database, visit, actor, "void", foodDue, "Void table order");
     await database.exec("DELETE FROM tab_lines WHERE visit_id = ? AND paid = 0", [visitId]);
   });
+  for (const line of unpaid) {
+    if (line.item_id) await restoreStock(line.item_id, line.qty, visit.code, actor.id);
+  }
   return (await getVisitById(visitId))!;
 }
 
@@ -895,7 +1163,8 @@ export async function voidLineTo(lineId: number, nextQty: number, actor: TillAct
     unit_nu: number;
     paid: number;
     fired_qty: number;
-  }>("SELECT id, visit_id, name, qty, unit_nu, paid, fired_qty FROM tab_lines WHERE id = ?", [lineId]);
+    item_id: number | null;
+  }>("SELECT id, visit_id, name, qty, unit_nu, paid, fired_qty, item_id FROM tab_lines WHERE id = ?", [lineId]);
   if (!line || line.paid === 1) throw new Error("That item is already paid.");
   const visit = await requireOpen(line.visit_id);
   const next = Math.max(0, Math.round(nextQty));
@@ -916,6 +1185,7 @@ export async function voidLineTo(lineId: number, nextQty: number, actor: TillAct
       ]);
     }
   });
+  if (line.item_id) await restoreStock(line.item_id, removed, visit.code, actor.id);
   return (await getVisitById(line.visit_id))!;
 }
 
@@ -941,6 +1211,8 @@ export async function addWalkInItem(
   await ensureTillSync();
   const item = (await listMenu(outlet)).find((row) => row.id === itemId);
   if (!item) throw new Error("That item is not on this counter.");
+  if (item.trackStock && item.stockQty < 1) throw new Error(`Out of stock: ${item.name}`);
+  await ensureStockSchema();
   const created = nowIso();
   const visitId = await tx(async (database) => {
     const wanted = (stamp?.code ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -962,6 +1234,7 @@ export async function addWalkInItem(
        VALUES (?, ?, ?, 1, ?, ?, ?, 0, ?, ?)`,
       [createdVisit, item.id, item.name, item.priceNu, item.priceNu, outlet, created, stamp?.lineKey ?? null],
     );
+    await consumeStockOn(database, item.id, 1, code);
     return createdVisit;
   });
   if (stamp?.clientKey) {
@@ -972,27 +1245,32 @@ export async function addWalkInItem(
 
 export async function addTabItem(visitId: number, itemId: number, outlet: Outlet, lineKey?: string): Promise<VisitView> {
   await ensureTillSync();
+  await ensureStockSchema();
   const visit = await requireOpen(visitId);
   const item = (await listMenu(outlet)).find((row) => row.id === itemId);
   if (!item) throw new Error("That item is not on this counter.");
+  if (item.trackStock && item.stockQty < 1) throw new Error(`Out of stock: ${item.name}`);
   const existing = visit.lines.find(
     (line) => !line.paid && line.outlet === outlet && line.name === item.name && line.unitNu === item.priceNu,
   );
-  if (existing) {
-    const qty = existing.qty + 1;
-    await query().exec("UPDATE tab_lines SET qty = ?, amount_nu = ? WHERE id = ?", [
-      qty,
-      qty * existing.unitNu,
-      existing.id,
-    ]);
-  } else {
-    await query().exec(
-      `INSERT INTO tab_lines
-       (visit_id, item_id, name, qty, unit_nu, amount_nu, outlet, paid, created_at, client_key)
-       VALUES (?, ?, ?, 1, ?, ?, ?, 0, ?, ?)`,
-      [visitId, item.id, item.name, item.priceNu, item.priceNu, outlet, nowIso(), lineKey ?? null],
-    );
-  }
+  await tx(async (database) => {
+    if (existing) {
+      const qty = existing.qty + 1;
+      await database.exec("UPDATE tab_lines SET qty = ?, amount_nu = ? WHERE id = ?", [
+        qty,
+        qty * existing.unitNu,
+        existing.id,
+      ]);
+    } else {
+      await database.exec(
+        `INSERT INTO tab_lines
+         (visit_id, item_id, name, qty, unit_nu, amount_nu, outlet, paid, created_at, client_key)
+         VALUES (?, ?, ?, 1, ?, ?, ?, 0, ?, ?)`,
+        [visitId, item.id, item.name, item.priceNu, item.priceNu, outlet, nowIso(), lineKey ?? null],
+      );
+    }
+    await consumeStockOn(database, item.id, 1, visit.code);
+  });
   return (await getVisitById(visitId))!;
 }
 
@@ -1025,19 +1303,36 @@ export async function deliverKot(visitId: number, lineIds: number[]): Promise<Vi
 }
 
 export async function changeLineQty(lineId: number, delta: number): Promise<VisitView> {
-  const line = await query().one<{ id: number; visit_id: number; qty: number; unit_nu: number; paid: number; fired_qty: number }>(
-    "SELECT id, visit_id, qty, unit_nu, paid, fired_qty FROM tab_lines WHERE id = ?",
-    [lineId],
-  );
+  await ensureStockSchema();
+  const line = await query().one<{
+    id: number;
+    visit_id: number;
+    qty: number;
+    unit_nu: number;
+    paid: number;
+    fired_qty: number;
+    item_id: number | null;
+  }>("SELECT id, visit_id, qty, unit_nu, paid, fired_qty, item_id FROM tab_lines WHERE id = ?", [lineId]);
   if (!line || line.paid === 1) throw new Error("That line is already paid.");
-  await requireOpen(line.visit_id);
+  const visit = await requireOpen(line.visit_id);
   const qty = line.qty + delta;
   if (qty < (line.fired_qty ?? 0)) throw new Error("The kitchen already has this dish. A manager can void it.");
-  if (qty <= 0) {
-    await query().exec("DELETE FROM tab_lines WHERE id = ? AND fired_qty = 0", [lineId]);
-  } else {
-    await query().exec("UPDATE tab_lines SET qty = ?, amount_nu = ? WHERE id = ?", [qty, qty * line.unit_nu, lineId]);
-  }
+  await tx(async (database) => {
+    if (delta > 0 && line.item_id) await consumeStockOn(database, line.item_id, delta, visit.code);
+    if (qty <= 0) {
+      await database.exec("DELETE FROM tab_lines WHERE id = ? AND fired_qty = 0", [lineId]);
+    } else {
+      await database.exec("UPDATE tab_lines SET qty = ?, amount_nu = ? WHERE id = ?", [
+        qty,
+        qty * line.unit_nu,
+        lineId,
+      ]);
+    }
+    if (delta < 0 && line.item_id) {
+      const restored = qty <= 0 ? line.qty : -delta;
+      await restoreStockOn(database, line.item_id, restored, visit.code);
+    }
+  });
   return (await getVisitById(line.visit_id))!;
 }
 

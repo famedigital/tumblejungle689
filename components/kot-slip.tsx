@@ -32,7 +32,7 @@ export function KotSlip({
 }) {
   const stamp = formatOrderStamp(orderedAt);
   const kind = ticket === "bot" ? "Bar order" : "Kitchen order";
-  const banner = cancel ? "Cancel" : reprint ? "Reprint" : kind;
+  const banner = cancel ? "*** CANCEL ***" : reprint ? "Reprint" : kind;
   const guest = formatPhone(phone);
   const count = lines.reduce((sum, line) => sum + line.qty, 0);
 
@@ -62,9 +62,10 @@ export function KotSlip({
           </div>
         ) : null}
       </dl>
+      <div className="kot-rule" aria-hidden />
       <ul>
         {lines.map((line, index) => (
-          <li key={`${line.name}-${index}`}>
+          <li key={`${line.name}-${index}`} className={cancel ? "kot-void" : undefined}>
             <b>{line.qty}</b>
             <span>
               {line.name}
@@ -73,10 +74,11 @@ export function KotSlip({
           </li>
         ))}
       </ul>
+      <div className="kot-rule" aria-hidden />
       <p className="kot-count">
         {count} {count === 1 ? "item" : "items"}
       </p>
-      <p className="kot-end">End of order</p>
+      <p className="kot-end">{cancel ? "— voided —" : "— end of order —"}</p>
     </article>
   );
 }

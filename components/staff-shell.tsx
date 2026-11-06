@@ -7,7 +7,7 @@ import { PlaytabCredit, PlaytabMark } from "@/components/playtab-mark";
 import { Button } from "@/components/ui/button";
 import { can, type Role } from "@/lib/types";
 
-export type StaffSection = "cashier" | "floor" | "page" | "charges" | "products" | "bank" | "receipt" | "staff";
+export type StaffSection = "cashier" | "floor" | "page" | "charges" | "products" | "stock" | "bank" | "receipt" | "staff";
 
 const LINKS: { id: StaffSection; href: string; label: string }[] = [
   { id: "cashier", href: "/cashier", label: "Cashier" },
@@ -15,6 +15,7 @@ const LINKS: { id: StaffSection; href: string; label: string }[] = [
   { id: "page", href: "/admin?section=page", label: "Page" },
   { id: "charges", href: "/admin?section=charges", label: "Charges" },
   { id: "products", href: "/admin/products", label: "Products" },
+  { id: "stock", href: "/admin/stock", label: "Stock" },
   { id: "bank", href: "/admin/bank", label: "Bank" },
   { id: "receipt", href: "/admin/receipt", label: "Receipt" },
   { id: "staff", href: "/admin?section=staff", label: "Staff" },
@@ -42,7 +43,7 @@ export function StaffShell({
 }) {
   const [more, setMore] = useState(false);
   const links = LINKS.filter((link) => allowed(role, link.id));
-  const moreLinks = ["page", "charges", "bank", "receipt", "staff", "cashier"]
+  const moreLinks = ["page", "charges", "stock", "bank", "receipt", "staff", "cashier"]
     .map((id) => links.find((link) => link.id === id))
     .filter((link) => link != null);
   const candy = tone === "candy";

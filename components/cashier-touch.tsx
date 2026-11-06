@@ -2578,16 +2578,16 @@ function OrderVoid({
   onVoid: (secret: string) => void;
 }) {
   const closeRef = useRef(onClose);
-  useEffect(() => {
-    closeRef.current = onClose;
-  });
-  const slipsRef = useRef(lines);
-
+  closeRef.current = onClose;
   const slips = lines;
-  const [armed, setArmed] = useState(false);
-  const [stamp, setStamp] = useState("");
   const [busy, setBusy] = useState(false);
   const [pinError, setPinError] = useState("");
+  const [stamp, setStamp] = useState("");
+  const [cancelTicket, setCancelTicket] = useState<{
+    ticket: "kot" | "bot";
+    lines: { name: string; qty: number; outlet: VisitView["lines"][number]["outlet"]; note: string }[];
+  } | null>(null);
+  const restCancels = useRef<NonNullable<typeof cancelTicket>[]>([]);
 
   const cancelLines = slips
     .map((line) => ({
@@ -2597,26 +2597,31 @@ function OrderVoid({
       note: "Cancel",
     }))
     .filter((line) => line.qty > 0);
-  const kotCancel = cancelLines.filter((line) => line.outlet !== "cafe");
-  const botCancel = cancelLines.filter((line) => line.outlet === "cafe");
 
   useEffect(() => {
     if (!open) {
-      window.setTimeout(() => setArmed(false), 0);
-      window.setTimeout(() => setStamp(""), 0);
-      window.setTimeout(() => setBusy(false), 0);
-      window.setTimeout(() => setPinError(""), 0);
+      setBusy(false);
+      setPinError("");
+      setStamp("");
+      setCancelTicket(null);
+      restCancels.current = [];
     }
   }, [open]);
 
   useEffect(() => {
-    if (!armed) return;
+    if (!cancelTicket) return;
     document.body.dataset.print = "kot";
     let closed = false;
     const finish = () => {
       if (closed) return;
       closed = true;
       delete document.body.dataset.print;
+      const next = restCancels.current.shift() ?? null;
+      if (next) {
+        setCancelTicket(next);
+        return;
+      }
+      setCancelTicket(null);
       closeRef.current();
     };
     window.addEventListener("afterprint", finish);
@@ -2626,10 +2631,10 @@ function OrderVoid({
       window.clearTimeout(timer);
       window.removeEventListener("afterprint", finish);
     };
-  }, [armed]);
+  }, [cancelTicket]);
 
   return (
-    <Dialog open={open || armed} onOpenChange={(next) => !next && !busy && onClose()}>
+    <Dialog open={open || cancelTicket != null} onOpenChange={(next) => !next && !busy && onClose()}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Void table order</DialogTitle>
@@ -2648,22 +2653,28 @@ function OrderVoid({
               return;
             }
             setBusy(true);
-            window.setTimeout(() => setPinError(""), 0);
+            setPinError("");
             void (async () => {
               const failed = await checkOwnerPin(pin);
               if (failed) {
                 setPinError(failed);
-                window.setTimeout(() => setBusy(false), 0);
+                setBusy(false);
                 return;
               }
               onVoid(pin);
-              window.setTimeout(() => setBusy(false), 0);
-              if (cancelLines.length > 0) {
-                setStamp(new Date().toISOString());
-                setArmed(true);
+              setBusy(false);
+              const jobs: NonNullable<typeof cancelTicket>[] = [];
+              const kot = cancelLines.filter((line) => line.outlet !== "cafe");
+              const bot = cancelLines.filter((line) => line.outlet === "cafe");
+              if (kot.length) jobs.push({ ticket: "kot", lines: kot });
+              if (bot.length) jobs.push({ ticket: "bot", lines: bot });
+              if (!jobs.length) {
+                onClose();
                 return;
               }
-              onClose();
+              setStamp(new Date().toISOString());
+              restCancels.current = jobs.slice(1);
+              setCancelTicket(jobs[0] ?? null);
             })();
           }}
         >
@@ -2685,36 +2696,20 @@ function OrderVoid({
           <Button type="submit" variant="destructive" disabled={busy || !slips.length}>
             {busy ? "Checking…" : "Void table order"}
           </Button>
-          {armed ? (
+          {cancelTicket ? (
             <PrintPortal>
-              {kotCancel.length > 0 ? (
-                <KotSlip
-                  venue={venueName}
-                  tableNo={visit.tableNo || "Counter"}
-                  phone={visit.phone}
-                  code={visit.code}
-                  orderedAt={stamp || new Date().toISOString()}
-                  staff={staffName}
-                  reprint={false}
-                  cancel
-                  ticket="kot"
-                  lines={kotCancel}
-                />
-              ) : null}
-              {botCancel.length > 0 ? (
-                <KotSlip
-                  venue={venueName}
-                  tableNo={visit.tableNo || "Counter"}
-                  phone={visit.phone}
-                  code={visit.code}
-                  orderedAt={stamp || new Date().toISOString()}
-                  staff={staffName}
-                  reprint={false}
-                  cancel
-                  ticket="bot"
-                  lines={botCancel}
-                />
-              ) : null}
+              <KotSlip
+                venue={venueName}
+                tableNo={visit.tableNo || "Counter"}
+                phone={visit.phone}
+                code={visit.code}
+                orderedAt={stamp || new Date().toISOString()}
+                staff={staffName}
+                reprint={false}
+                cancel
+                ticket={cancelTicket.ticket}
+                lines={cancelTicket.lines}
+              />
             </PrintPortal>
           ) : null}
         </form>
@@ -3147,12 +3142,23 @@ function MenuSheet({
               {rows.length ? null : <li className="cash-hint">No match.</li>}
               {rows.map((item) => {
                 const picked = rows[Math.min(at, Math.max(rows.length - 1, 0))]?.id === item.id;
+                const oos = item.trackStock && item.stockQty < 1;
+                const low = item.trackStock && !oos && item.stockQty <= item.reorderQty;
                 return (
                   <li key={item.id}>
-                    <button type="button" data-menu-item={item.id} data-pick={picked ? "1" : "0"} onClick={() => onAdd(item)}>
+                    <button
+                      type="button"
+                      data-menu-item={item.id}
+                      data-pick={picked ? "1" : "0"}
+                      disabled={oos}
+                      onClick={() => onAdd(item)}
+                    >
                       <span>
                         {item.name}
-                        <small>{item.category}</small>
+                        <small>
+                          {item.category}
+                          {oos ? " · out of stock" : low ? ` · low (${item.stockQty})` : ""}
+                        </small>
                       </span>
                       <b>{formatNu(item.priceNu)}</b>
                     </button>
