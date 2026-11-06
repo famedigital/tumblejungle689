@@ -2,33 +2,34 @@
 
 export type PrintMode = "receipt" | "kot" | "ticket" | "sticker" | "day";
 
-const LS_URL = "tumble-print-agent-url";
+const LS_ON = "tumble-print-agent-on";
 const LS_TOKEN = "tumble-print-agent-token";
 
 export type PrintStationConfig = {
-  url: string;
+  url?: string;
   token: string;
+  on?: boolean;
 };
 
 export function readPrintStationConfig(fallback?: Partial<PrintStationConfig>): PrintStationConfig | null {
-  let url = "";
+  let on = false;
   let token = "";
   try {
-    url = (localStorage.getItem(LS_URL) || "").trim();
+    on = localStorage.getItem(LS_ON) === "1";
     token = (localStorage.getItem(LS_TOKEN) || "").trim();
   } catch {
     /* private mode */
   }
-  if (!url) url = (fallback?.url || "").trim();
+  if (fallback?.on != null) on = Boolean(fallback.on) || on;
   if (!token) token = (fallback?.token || "").trim();
-  if (!url) return null;
-  return { url: url.replace(/\/$/, ""), token: token || "tumble-print" };
+  if (!on) return null;
+  return { token: token || "tumble-print", on: true };
 }
 
 export function writePrintStationConfig(config: PrintStationConfig) {
   try {
-    localStorage.setItem(LS_URL, config.url.replace(/\/$/, ""));
-    localStorage.setItem(LS_TOKEN, config.token);
+    localStorage.setItem(LS_ON, config.on === false ? "0" : "1");
+    localStorage.setItem(LS_TOKEN, config.token || "tumble-print");
   } catch {
     /* ignore */
   }
@@ -53,26 +54,18 @@ export function slipTextForPrint(mode: PrintMode): string {
   return parts.join("\n\n---\n\n");
 }
 
-async function postToAgent(config: PrintStationConfig, mode: PrintMode, text: string): Promise<boolean> {
-  const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), 8000);
+async function enqueueCloud(mode: PrintMode, text: string): Promise<boolean> {
   try {
-    const res = await fetch(`${config.url}/print`, {
+    const res = await fetch("/api/print/enqueue", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Print-Token": config.token,
-      },
-      body: JSON.stringify({ token: config.token, mode, kind: mode, text }),
-      signal: controller.signal,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: mode, mode, text }),
     });
     if (!res.ok) return false;
     const body = (await res.json().catch(() => null)) as { ok?: boolean } | null;
     return Boolean(body?.ok);
   } catch {
     return false;
-  } finally {
-    window.clearTimeout(timer);
   }
 }
 
@@ -88,7 +81,7 @@ function browserPrint(mode: PrintMode) {
 }
 
 /**
- * Prefer LAN print agent (phones → PC → thermal). Falls back to window.print().
+ * Queue slip for the PC print agent (cloud poll). Falls back to window.print().
  */
 export async function thermalPrint(
   mode: PrintMode,
@@ -96,9 +89,9 @@ export async function thermalPrint(
 ): Promise<"station" | "browser"> {
   const config = readPrintStationConfig(fallback);
   const text = slipTextForPrint(mode);
-  if (config && text) {
+  if (config?.on && text) {
     document.body.dataset.print = mode;
-    const ok = await postToAgent(config, mode, text);
+    const ok = await enqueueCloud(mode, text);
     delete document.body.dataset.print;
     if (ok) return "station";
   }
@@ -106,16 +99,21 @@ export async function thermalPrint(
   return "browser";
 }
 
-export async function pingPrintStation(config: PrintStationConfig): Promise<boolean> {
+export async function pingPrintStation(): Promise<{ online: boolean; ageSec: number | null; queued: number }> {
   try {
-    const res = await fetch(`${config.url.replace(/\/$/, "")}/health`, {
-      method: "GET",
-      signal: AbortSignal.timeout(4000),
-    });
-    if (!res.ok) return false;
-    const body = (await res.json().catch(() => null)) as { ok?: boolean } | null;
-    return Boolean(body?.ok);
+    const res = await fetch("/api/print/status", { method: "GET", signal: AbortSignal.timeout(6000) });
+    if (!res.ok) return { online: false, ageSec: null, queued: 0 };
+    const body = (await res.json().catch(() => null)) as {
+      online?: boolean;
+      ageSec?: number | null;
+      queued?: number;
+    } | null;
+    return {
+      online: Boolean(body?.online),
+      ageSec: body?.ageSec ?? null,
+      queued: body?.queued ?? 0,
+    };
   } catch {
-    return false;
+    return { online: false, ageSec: null, queued: 0 };
   }
 }

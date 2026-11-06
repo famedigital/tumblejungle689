@@ -34,10 +34,12 @@ export type Settings = {
   scPercent: number;
   gstOn: boolean;
   gstPercent: number;
-  /** LAN print agent base URL, e.g. http://192.168.1.20:7910 */
+  /** Optional legacy LAN URL (unused for cloud poll agent). */
   printAgentUrl: string;
   /** Shared secret for the print agent */
   printAgentToken: string;
+  /** Route till prints through the PC print agent (cloud queue). */
+  printAgentOn: boolean;
 };
 
 export type MenuItem = {

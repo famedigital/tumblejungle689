@@ -6,9 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { pingPrintStation, writePrintStationConfig } from "@/lib/print-station";
 
-export function PrintStationForm({ url, token }: { url: string; token: string }) {
-  const [draftUrl, setDraftUrl] = useState(url);
+export function PrintStationForm({ token, on }: { url?: string; token: string; on?: boolean }) {
   const [draftToken, setDraftToken] = useState(token || "tumble-print");
+  const [draftOn, setDraftOn] = useState(Boolean(on));
   const [ping, setPing] = useState("");
 
   return (
@@ -16,30 +16,42 @@ export function PrintStationForm({ url, token }: { url: string; token: string })
       <div>
         <h2 className="font-heading text-2xl">Print station</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Run <code className="text-xs">tools/print-agent</code> on the PC that owns the thermal printer. Phones on the
-          same WiFi print through that PC. Leave URL blank to use each device&apos;s own browser print dialog.
+          Phones cannot talk to a printer over WiFi from this secure website. Instead, the printer PC runs a small
+          agent that <strong>pulls</strong> jobs from the cloud — no firewall port opening needed.
         </p>
       </div>
+      <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
+        <li>On the printer PC install Node.js LTS from nodejs.org</li>
+        <li>
+          Copy folder <code className="text-xs">tools/print-agent</code>, edit <code className="text-xs">.env</code>
+        </li>
+        <li>
+          Set <code className="text-xs">CLOUD_URL=https://tumblejungle689.vercel.app</code> and the same token below
+        </li>
+        <li>
+          Run <code className="text-xs">npm start</code> and leave the window open
+        </li>
+      </ol>
       <form
         action={savePrintStationAction}
         className="grid gap-3"
         onSubmit={() => {
-          writePrintStationConfig({ url: draftUrl, token: draftToken });
+          writePrintStationConfig({ token: draftToken, on: draftOn });
         }}
       >
-        <label className="space-y-1 text-sm">
-          <span>Agent URL</span>
-          <Input
-            name="printAgentUrl"
-            value={draftUrl}
-            onChange={(event) => setDraftUrl(event.target.value)}
-            placeholder="http://192.168.1.20:7910"
-            className="h-11"
-            autoComplete="off"
+        <label className="flex items-center gap-3 text-sm">
+          <input
+            type="checkbox"
+            name="printAgentOn"
+            value="1"
+            checked={draftOn}
+            onChange={(event) => setDraftOn(event.target.checked)}
+            className="size-4"
           />
+          <span>Send till prints to the shared printer PC</span>
         </label>
         <label className="space-y-1 text-sm">
-          <span>Shared token</span>
+          <span>Shared token (must match agent .env TOKEN)</span>
           <Input
             name="printAgentToken"
             value={draftToken}
@@ -58,17 +70,20 @@ export function PrintStationForm({ url, token }: { url: string; token: string })
             variant="outline"
             className="h-11"
             onClick={async () => {
-              const clean = draftUrl.trim().replace(/\/$/, "");
-              if (!clean) {
-                setPing("Enter the PC agent URL first.");
-                return;
-              }
               setPing("Checking…");
-              const ok = await pingPrintStation({ url: clean, token: draftToken });
-              setPing(ok ? "Agent reachable on this WiFi." : "Cannot reach agent — check PC IP, firewall, and npm start.");
+              const status = await pingPrintStation();
+              if (status.online) {
+                setPing(
+                  `Agent online (seen ${status.ageSec ?? 0}s ago)${status.queued ? ` · ${status.queued} waiting` : ""}.`,
+                );
+              } else {
+                setPing(
+                  "Agent not seen yet. On the printer PC run npm start with CLOUD_URL set — then click Test again.",
+                );
+              }
             }}
           >
-            Test connection
+            Test agent
           </Button>
         </div>
         {ping ? <p className="text-sm text-muted-foreground">{ping}</p> : null}

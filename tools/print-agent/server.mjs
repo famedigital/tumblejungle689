@@ -1,12 +1,12 @@
 /**
  * Tumble Jungle print agent — run on the PC connected to the receipt printer.
- * Phones on the same WiFi POST /print; this box sends ESC/POS (or Windows spool).
+ * Pulls jobs from the cloud site (fixes HTTPS till → LAN blocked by browsers).
  *
- *   cd tools/print-agent
- *   copy .env.example .env   # edit TOKEN + printer
+ *   cd tools\print-agent
+ *   copy .env.example .env
+ *   notepad .env
  *   npm start
  */
-import { createServer } from "node:http";
 import { connect } from "node:net";
 import { execFile } from "node:child_process";
 import { mkdtemp, writeFile, unlink } from "node:fs/promises";
@@ -16,15 +16,15 @@ import { readFileSync, existsSync } from "node:fs";
 
 loadEnv();
 
-const PORT = Number(process.env.PORT || 7910);
+const CLOUD_URL = String(process.env.CLOUD_URL || "https://tumblejungle689.vercel.app").replace(/\/$/, "");
 const TOKEN = String(process.env.TOKEN || "tumble-print").trim();
 const PRINTER_HOST = String(process.env.PRINTER_HOST || "").trim();
 const PRINTER_PORT = Number(process.env.PRINTER_PORT || 9100);
 const PRINTER_NAME = String(process.env.PRINTER_NAME || "").trim();
+const POLL_MS = Math.max(800, Number(process.env.POLL_MS || 1500));
 
 const ESC = {
   init: Buffer.from([0x1b, 0x40]),
-  center: Buffer.from([0x1b, 0x61, 0x01]),
   left: Buffer.from([0x1b, 0x61, 0x00]),
   boldOn: Buffer.from([0x1b, 0x45, 0x01]),
   boldOff: Buffer.from([0x1b, 0x45, 0x00]),
@@ -54,32 +54,6 @@ function loadEnv() {
   } catch {
     /* optional .env */
   }
-}
-
-function cors(res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Print-Token");
-}
-
-function readBody(req) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    req.on("data", (c) => chunks.push(c));
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
-    req.on("error", reject);
-  });
-}
-
-function tokenOk(req, body) {
-  const header =
-    req.headers["x-print-token"] ||
-    (String(req.headers.authorization || "").startsWith("Bearer ")
-      ? String(req.headers.authorization).slice(7)
-      : "");
-  const fromBody = body && typeof body.token === "string" ? body.token : "";
-  const got = String(header || fromBody || "").trim();
-  return got && got === TOKEN;
 }
 
 function toEscPos(text) {
@@ -152,71 +126,55 @@ async function printJob(text) {
   if (!body) throw new Error("Nothing to print.");
   if (PRINTER_HOST) {
     await sendRaw(toEscPos(body));
-    return { mode: "network", host: PRINTER_HOST, port: PRINTER_PORT };
+    return;
   }
   await sendWindows(body);
-  return { mode: "windows", printer: PRINTER_NAME };
 }
 
-function json(res, status, payload) {
-  cors(res);
-  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
-  res.end(JSON.stringify(payload));
+async function claim() {
+  const res = await fetch(`${CLOUD_URL}/api/print/claim`, {
+    method: "GET",
+    headers: { "X-Print-Token": TOKEN },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Claim HTTP ${res.status}`);
+  return data.job || null;
 }
 
-const server = createServer(async (req, res) => {
-  cors(res);
-  if (req.method === "OPTIONS") {
-    res.writeHead(204);
-    res.end();
-    return;
-  }
+async function complete(id, ok) {
+  await fetch(`${CLOUD_URL}/api/print/claim`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Print-Token": TOKEN },
+    body: JSON.stringify({ token: TOKEN, id, ok }),
+  });
+}
 
-  const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
-
-  if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/health")) {
-    json(res, 200, {
-      ok: true,
-      service: "tumble-print-agent",
-      port: PORT,
-      target: PRINTER_HOST
-        ? `network://${PRINTER_HOST}:${PRINTER_PORT}`
-        : PRINTER_NAME
-          ? `windows://${PRINTER_NAME}`
-          : "unconfigured",
-    });
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/print") {
-    try {
-      const raw = await readBody(req);
-      const body = raw ? JSON.parse(raw) : {};
-      if (!tokenOk(req, body)) {
-        json(res, 401, { ok: false, error: "Bad print token." });
-        return;
+async function loop() {
+  try {
+    const job = await claim();
+    if (job?.id && job.body) {
+      console.log(`Printing job #${job.id} (${job.kind || "slip"})…`);
+      try {
+        await printJob(job.body);
+        await complete(job.id, true);
+        console.log(`Done #${job.id}`);
+      } catch (err) {
+        console.error(`Print failed #${job.id}:`, err instanceof Error ? err.message : err);
+        await complete(job.id, false).catch(() => undefined);
       }
-      const text = typeof body.text === "string" ? body.text : "";
-      const result = await printJob(text);
-      json(res, 200, { ok: true, kind: body.kind || body.mode || "slip", ...result });
-    } catch (err) {
-      json(res, 500, {
-        ok: false,
-        error: err instanceof Error ? err.message : "Print failed.",
-      });
     }
-    return;
+  } catch (err) {
+    console.error("Poll error:", err instanceof Error ? err.message : err);
+  } finally {
+    setTimeout(loop, POLL_MS);
   }
+}
 
-  json(res, 404, { ok: false, error: "Not found." });
-});
-
-server.listen(PORT, "0.0.0.0", () => {
-  const target = PRINTER_HOST
-    ? `${PRINTER_HOST}:${PRINTER_PORT}`
-    : PRINTER_NAME || "(set PRINTER_HOST or PRINTER_NAME)";
-  console.log(`Tumble print agent on http://0.0.0.0:${PORT}`);
-  console.log(`Printer target: ${target}`);
-  console.log(`Token: ${TOKEN}`);
-  console.log(`Health: http://127.0.0.1:${PORT}/health`);
-});
+console.log(`Tumble print agent`);
+console.log(`Cloud: ${CLOUD_URL}`);
+console.log(`Token: ${TOKEN}`);
+console.log(
+  `Printer: ${PRINTER_HOST ? `${PRINTER_HOST}:${PRINTER_PORT}` : PRINTER_NAME || "(set PRINTER_HOST or PRINTER_NAME)"}`,
+);
+console.log(`Polling every ${POLL_MS}ms — leave this window open.`);
+loop();

@@ -31,6 +31,7 @@ export type TillBase = {
   gstPercent: number;
   printAgentUrl: string;
   printAgentToken: string;
+  printAgentOn: boolean;
   savedAt: string;
 };
 
@@ -75,6 +76,7 @@ export function emptyBase(): TillBase {
     gstPercent: 5,
     printAgentUrl: "",
     printAgentToken: "tumble-print",
+    printAgentOn: false,
     savedAt: "",
   };
 }

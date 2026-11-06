@@ -18,7 +18,7 @@ export default async function ReceiptDesignPage({
     <StaffShell role={session.role} name={session.name} title="Receipt" tone="candy" current="receipt">
       <Flash error={query.error} ok={query.ok} />
       <div className="grid gap-4">
-        <PrintStationForm url={settings.printAgentUrl} token={settings.printAgentToken} />
+        <PrintStationForm token={settings.printAgentToken} on={settings.printAgentOn} />
         <ReceiptEditor
           venue={settings.venueName}
           address={settings.address}

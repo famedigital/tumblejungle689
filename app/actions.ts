@@ -332,8 +332,8 @@ export async function savePrintStationAction(formData: FormData) {
   await run("/admin/receipt", undefined, async () => {
     await requireArea("admin");
     await savePrintStation({
-      url: text(formData, "printAgentUrl"),
       token: text(formData, "printAgentToken"),
+      on: text(formData, "printAgentOn") === "1",
     });
     redirect("/admin/receipt?ok=Print%20station%20saved");
   });

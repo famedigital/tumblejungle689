@@ -200,14 +200,13 @@ export function CashierTouch({
   const receiptThanks = book.base.receiptThanks;
   const receiptRules = book.base.receiptRules;
   const printAgent = {
-    url: book.base.printAgentUrl || "",
     token: book.base.printAgentToken || "tumble-print",
+    on: Boolean(book.base.printAgentOn),
   };
 
   useEffect(() => {
-    if (!printAgent.url) return;
     writePrintStationConfig(printAgent);
-  }, [printAgent.url, printAgent.token]);
+  }, [printAgent.on, printAgent.token]);
 
   function runThermalPrint(mode: PrintMode) {
     return thermalPrint(mode, printAgent);
