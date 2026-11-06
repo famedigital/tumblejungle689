@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   TrendingUp,
   Tag,
@@ -20,8 +21,27 @@ import {
 } from "lucide-react";
 import type { MenuItem, Rate } from "@/lib/types";
 
-export default function V2AdminDashboard() {
-  const [activeTab, setActiveTab] = useState<"sales" | "menu" | "stock" | "rates" | "settings">("sales");
+type AdminTab = "sales" | "menu" | "stock" | "rates" | "settings";
+
+function AdminDashboardInner() {
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get("tab") as AdminTab | null;
+  const validTabs: AdminTab[] = ["sales", "menu", "stock", "rates", "settings"];
+
+  const urlTab: AdminTab = tabParam && validTabs.includes(tabParam) ? tabParam : "sales";
+  const [selectedTab, setSelectedTab] = useState<AdminTab | null>(null);
+
+  const activeTab = selectedTab ?? urlTab;
+
+  const handleTabChange = (tab: AdminTab) => {
+    setSelectedTab(tab);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", tab);
+      window.history.replaceState({}, "", url.toString());
+    }
+  };
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
@@ -259,18 +279,18 @@ export default function V2AdminDashboard() {
       <div className="border-b border-slate-200/80 dark:border-white/10 bg-white/50 dark:bg-slate-900/50 backdrop-blur-md px-4 md:px-8">
         <div className="max-w-7xl mx-auto flex items-center gap-1.5 overflow-x-auto py-2.5 scrollbar-none">
           {[
-            { id: "sales", label: "Sales & Auditor", icon: TrendingUp },
-            { id: "menu", label: "Menu & Prices", icon: Tag },
-            { id: "stock", label: `Stock (${lowStockCount} Low)`, icon: Package, badge: lowStockCount > 0 },
-            { id: "rates", label: "Play Durations", icon: Clock },
-            { id: "settings", label: "Bank QR & Venue", icon: QrCode },
+            { id: "sales" as AdminTab, label: "Sales & Auditor", icon: TrendingUp },
+            { id: "menu" as AdminTab, label: "Menu & Prices", icon: Tag },
+            { id: "stock" as AdminTab, label: `Stock (${lowStockCount} Low)`, icon: Package, badge: lowStockCount > 0 },
+            { id: "rates" as AdminTab, label: "Play Durations", icon: Clock },
+            { id: "settings" as AdminTab, label: "Bank QR & Venue", icon: QrCode },
           ].map((tab) => {
             const active = activeTab === tab.id;
             return (
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => setActiveTab(tab.id as typeof activeTab)}
+                onClick={() => handleTabChange(tab.id)}
                 className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs md:text-sm font-bold whitespace-nowrap transition-all ${
                   active
                     ? "bg-emerald-600 text-white shadow-sm shadow-emerald-600/30"
@@ -346,22 +366,30 @@ export default function V2AdminDashboard() {
               </div>
             </div>
 
-            {/* Quick Actions & Legacy Full Ledger Link */}
+            {/* Quick Actions & Navigation */}
             <div className="p-5 rounded-3xl bg-white dark:bg-slate-900/60 border border-slate-200/80 dark:border-white/10 flex flex-col md:flex-row items-center justify-between gap-4">
               <div>
                 <h3 className="font-bold text-base text-slate-900 dark:text-white">
-                  Need the complete ledger or void receipts?
+                  Quick Navigation
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  View full historical transaction logs, print daily end-of-day z-reports, and audit voided tickets.
+                  Return to the live cashier counter or open the secondary pole display for visiting parents.
                 </p>
               </div>
               <div className="flex items-center gap-2 w-full md:w-auto">
+                <Link
+                  href="/v2"
+                  className="w-full md:w-auto text-center px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-sm"
+                >
+                  Back to Counter Station
+                </Link>
                 <a
-                  href="/admin"
+                  href="/display"
+                  target="_blank"
+                  rel="noreferrer"
                   className="w-full md:w-auto text-center px-4 py-2.5 rounded-xl border border-slate-300 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold transition-all"
                 >
-                  Open Classic Daily Auditor
+                  Open Display
                 </a>
               </div>
             </div>
@@ -897,5 +925,22 @@ export default function V2AdminDashboard() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function V2AdminDashboard() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
+          <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 font-medium text-sm">
+            <RefreshCw className="h-5 w-5 animate-spin text-emerald-500" />
+            <span>Loading Admin Command Center...</span>
+          </div>
+        </div>
+      }
+    >
+      <AdminDashboardInner />
+    </Suspense>
   );
 }

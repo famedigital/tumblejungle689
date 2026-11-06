@@ -1,6 +1,7 @@
 "use client";
 
 import { useV2Store } from "@/lib/v2/store";
+import Link from "next/link";
 import {
   X,
   TrendingUp,
@@ -8,7 +9,7 @@ import {
   Package,
   FileSpreadsheet,
   QrCode,
-  Receipt,
+  Clock,
   Tv,
   ArrowRight,
   ShieldCheck,
@@ -32,39 +33,39 @@ export function AdminHubModal({
 
   const adminNav = [
     {
-      title: "Products & Prices",
-      desc: "Update menu items, dish prices, and play durations",
+      title: "Menu & Dish Prices",
+      desc: "Instant live price updates, kitchen items, and active toggles",
       icon: Tag,
-      href: "/admin/products",
+      href: "/v2/admin?tab=menu",
       color: "text-blue-500 bg-blue-500/10",
     },
     {
-      title: "Stock & Purchases",
-      desc: "Track retail inventory, bottled drinks, and purchase costs",
+      title: "Stock & Inventory",
+      desc: "Track retail inventory, bottled drinks, restocks, and alerts",
       icon: Package,
-      href: "/admin/stock",
+      href: "/v2/admin?tab=stock",
       color: "text-amber-500 bg-amber-500/10",
     },
     {
-      title: "Sales Report & AI Auditor",
-      desc: "Full revenue breakdown, comps, voids, and audit ledger",
+      title: "Sales & Day Auditor",
+      desc: "Live gross sales, cash vs bank QR, and daily totals",
       icon: FileSpreadsheet,
-      href: "/admin",
+      href: "/v2/admin?tab=sales",
       color: "text-emerald-500 bg-emerald-500/10",
     },
     {
-      title: "Bank QR & Venue Settings",
-      desc: "Bhutan RMA QR payload, mBOB account, address, and phone",
-      icon: QrCode,
-      href: "/admin/bank",
-      color: "text-purple-500 bg-purple-500/10",
+      title: "Play Rates & Durations",
+      desc: "Configure 30m, 60m, 90m, 120m pass prices and overtime penalty",
+      icon: Clock,
+      href: "/v2/admin?tab=rates",
+      color: "text-indigo-500 bg-indigo-500/10",
     },
     {
-      title: "Receipt Customizer",
-      desc: "Thermal slip header, rules, thank-you notes, and tax options",
-      icon: Receipt,
-      href: "/admin/receipt",
-      color: "text-rose-500 bg-rose-500/10",
+      title: "Bank QR & Venue Settings",
+      desc: "Bhutan RMA QR payload, mBOB account, address, and receipt notes",
+      icon: QrCode,
+      href: "/v2/admin?tab=settings",
+      color: "text-purple-500 bg-purple-500/10",
     },
     {
       title: "Customer Display Screen",
@@ -144,9 +145,10 @@ export function AdminHubModal({
           </span>
           <div className="space-y-2">
             {adminNav.map((item) => (
-              <a
+              <Link
                 key={item.href}
                 href={item.href}
+                onClick={onClose}
                 className="flex items-center justify-between p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all group shadow-sm"
               >
                 <div className="flex items-center gap-3">
@@ -165,7 +167,7 @@ export function AdminHubModal({
                   </div>
                 </div>
                 <ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-emerald-500 group-hover:translate-x-0.5 transition-all" />
-              </a>
+              </Link>
             ))}
           </div>
         </div>

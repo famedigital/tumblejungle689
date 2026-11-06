@@ -1,6 +1,7 @@
 "use client";
 
 import { useV2Store } from "@/lib/v2/store";
+import Link from "next/link";
 import { User, Activity, RefreshCw, LayoutDashboard } from "lucide-react";
 
 export function TopBar({
@@ -48,24 +49,24 @@ export function TopBar({
 
           {/* Desktop Direct Links */}
           <nav className="hidden md:flex items-center gap-1 ml-6 text-xs font-semibold text-slate-600 dark:text-slate-300">
-            <a
-              href="/admin/products"
+            <Link
+              href="/v2/admin?tab=menu"
               className="px-3 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
               🏷️ Menu & Prices
-            </a>
-            <a
-              href="/admin/stock"
+            </Link>
+            <Link
+              href="/v2/admin?tab=stock"
               className="px-3 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
               📦 Stock & Purchases
-            </a>
-            <a
-              href="/admin"
+            </Link>
+            <Link
+              href="/v2/admin?tab=sales"
               className="px-3 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
               📊 Day Sales Report
-            </a>
+            </Link>
             <a
               href="/display"
               target="_blank"
