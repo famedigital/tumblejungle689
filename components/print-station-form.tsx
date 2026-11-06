@@ -78,7 +78,7 @@ export function PrintStationForm({ token, on }: { url?: string; token: string; o
                 );
               } else {
                 setPing(
-                  "Agent not seen yet. On the printer PC run npm start with CLOUD_URL set — then click Test again.",
+                  "Agent not seen yet. On the printer PC: 1) open Start Print Agent.bat 2) wait for “Connected to cloud” 3) Test again. If the window shows Poll error / Bad print token, match TOKEN with this page and Save first.",
                 );
               }
             }}

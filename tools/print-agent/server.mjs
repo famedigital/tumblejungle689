@@ -131,6 +131,21 @@ async function printJob(text) {
   await sendWindows(body);
 }
 
+let linked = false;
+
+async function heartbeat() {
+  const res = await fetch(`${CLOUD_URL}/api/print/heartbeat`, {
+    method: "GET",
+    headers: { "X-Print-Token": TOKEN },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Heartbeat HTTP ${res.status}`);
+  if (!linked) {
+    linked = true;
+    console.log("Connected to cloud — Admin Test agent should show online.");
+  }
+}
+
 async function claim() {
   const res = await fetch(`${CLOUD_URL}/api/print/claim`, {
     method: "GET",
@@ -151,6 +166,7 @@ async function complete(id, ok) {
 
 async function loop() {
   try {
+    await heartbeat();
     const job = await claim();
     if (job?.id && job.body) {
       console.log(`Printing job #${job.id} (${job.kind || "slip"})…`);
@@ -164,7 +180,9 @@ async function loop() {
       }
     }
   } catch (err) {
+    linked = false;
     console.error("Poll error:", err instanceof Error ? err.message : err);
+    console.error("Check CLOUD_URL, TOKEN (must match Admin), and internet on this PC.");
   } finally {
     setTimeout(loop, POLL_MS);
   }

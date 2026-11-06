@@ -21,11 +21,19 @@ export async function enqueuePrintJob(kind: string, body: string): Promise<Print
   return { id, kind, body: text, status: "queued", createdAt: created };
 }
 
-export async function claimPrintJob(token: string): Promise<PrintJob | null> {
+export async function touchPrintAgent(token: string): Promise<void> {
   await ensurePrintSchema();
   const settings = await getSettings();
-  if (!tokenOk(token, settings.printAgentToken)) throw new Error("Bad print token.");
+  if (!tokenOk(token, settings.printAgentToken)) {
+    throw new Error(
+      `Bad print token. Admin token is set; use the exact same TOKEN in the agent .env (expected length ${settings.printAgentToken.length}).`,
+    );
+  }
   await putSetting("print_agent_seen", new Date().toISOString());
+}
+
+export async function claimPrintJob(token: string): Promise<PrintJob | null> {
+  await touchPrintAgent(token);
 
   return tx(async (database) => {
     const row = await database.one<{
