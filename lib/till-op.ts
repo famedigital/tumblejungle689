@@ -50,6 +50,7 @@ export type TillOp = {
   | { kind: "waive"; secret: string }
   | { kind: "voidVisit"; secret: string }
   | { kind: "voidLine"; lineKey: string; nextQty: number; secret: string }
+  | { kind: "voidOrder"; secret: string }
   | {
       kind: "settle";
       method: TillPay;
@@ -157,6 +158,7 @@ function change(
   if (op.kind === "saveKot") return cost(saveKot(visit, op.tableNo, op.lineKeys));
   if (op.kind === "deliverKot") return cost(deliverKot(visit, op.lineKeys));
   if (op.kind === "voidLine") return cost(voidLine(visit, op.lineKey, op.nextQty));
+  if (op.kind === "voidOrder") return cost(voidOrder(visit));
   if (op.kind === "settle") return settle(visit, op, rates, extraPerMinNu, charges);
   if (op.kind === "leave" || op.kind === "cancel" || op.kind === "waive" || op.kind === "voidVisit") {
     return { ...visit, status: "settled", closedAt: op.at, dueNu: 0, overtime: null };
@@ -313,6 +315,13 @@ function voidLine(visit: VisitView, key: string, nextQty: number): VisitView {
         : item,
     ),
   };
+}
+
+/** Wipe unpaid food/drink lines on a table bill. Play blocks stay. */
+function voidOrder(visit: VisitView): VisitView {
+  const unpaid = visit.lines.filter((line) => !line.paid);
+  if (!unpaid.length) throw new Error("There is no open table order to void.");
+  return { ...visit, lines: visit.lines.filter((line) => line.paid) };
 }
 
 function addPlay(visit: VisitView, minutes: number, at: string, rates: Rate[]): VisitView {

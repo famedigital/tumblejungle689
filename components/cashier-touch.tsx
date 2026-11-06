@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import Link from "next/link";
@@ -38,6 +38,7 @@ import { PayQr } from "@/components/pay-qr";
 import { chargeRatesOf, formatRate, quoteCharges } from "@/lib/charges";
 import { formatNu, formatClock, formatPhone, formatWhen, minutesLeft, tableLabel, tableTone } from "@/lib/format";
 import { bankFromJournal } from "@/lib/pay-banks";
+import { checkOwnerPin } from "@/lib/owner-pin";
 import { submitOpenTender, useTillHotkeys } from "@/lib/hotkeys";
 import { buildDynamicEmv, staticFromSettings } from "@/lib/emv";
 import { overtimeSentence, quoteOvertime } from "@/lib/overtime";
@@ -311,13 +312,18 @@ export function CashierTouch({
   const poleRef = useRef<PolePayload | null>(null);
 
   useEffect(() => {
-    if (openVisit) setCounterClear(false);
+    if (openVisit && counterClear) {
+      window.setTimeout(() => setCounterClear(false), 0);
+    }
+
   }, [openVisit]);
 
   useEffect(() => {
     if (!openVisit) return;
     const index = ranked.findIndex((row) => row.item.id === openVisit.id);
-    if (index >= 0) setBoardAt((current) => (current === index ? current : index));
+    if (index >= 0) {
+      window.setTimeout(() => setBoardAt(index), 0);
+    }
   }, [openVisit?.id]);
 
   useEffect(() => {
@@ -394,12 +400,12 @@ export function CashierTouch({
 
   useEffect(() => {
     if (!visit?.code) {
-      setQr("");
-      setTicketUrl("");
+      window.setTimeout(() => setQr(""), 0);
+      window.setTimeout(() => setTicketUrl(""), 0);
       return;
     }
     const url = `${window.location.origin}/t/${visit.code}`;
-    setTicketUrl(url);
+    window.setTimeout(() => setTicketUrl(url), 0);
     let cancel = false;
     void import("qrcode").then((mod) =>
       mod.toDataURL(url, {
@@ -417,7 +423,9 @@ export function CashierTouch({
   }, [visit?.code]);
 
   useEffect(() => {
-    if (!openVisit) setTab("playing");
+    if (!openVisit) {
+      window.setTimeout(() => setTab("playing"), 0);
+    }
   }, [openVisit?.code]);
 
   useEffect(() => {
@@ -665,7 +673,8 @@ export function CashierTouch({
   }, [paidSlip]);
 
   useEffect(() => {
-    setTableNo(visit?.tableNo ?? "");
+    const nextTable = visit?.tableNo ?? "";
+    window.setTimeout(() => setTableNo(nextTable), 0);
   }, [visit?.id, visit?.tableNo]);
 
   function openTender() {
@@ -897,8 +906,8 @@ export function CashierTouch({
   useEffect(() => {
     const term = scanText.trim();
     if (!term) {
-      setHits((current) => (current.length === 0 ? current : []));
-      setHitAt((current) => (current === 0 ? current : 0));
+      window.setTimeout(() => setHits((current) => (current.length === 0 ? current : [])), 0);
+      window.setTimeout(() => setHitAt((current) => (current === 0 ? current : 0)), 0);
       return;
     }
     const needle = term.toLowerCase();
@@ -919,8 +928,8 @@ export function CashierTouch({
         },
       ];
     });
-    setHits((current) => (sameHits(current, local) ? current : local));
-    if (!sameHits(hitsRef.current, local)) setHitAt(0);
+    window.setTimeout(() => setHits((current) => (sameHits(current, local) ? current : local)), 0);
+    if (!sameHits(hitsRef.current, local)) window.setTimeout(() => setHitAt(0), 0);
     const timer = window.setTimeout(() => {
       void fetch(`/api/till/search?q=${encodeURIComponent(term)}`)
         .then((response) => (response.ok ? response.json() : { hits: [] }))
@@ -991,7 +1000,7 @@ export function CashierTouch({
 
   useEffect(() => {
     if (!startNew) return;
-    setCheck((current) => current ?? freshCheck());
+    window.setTimeout(() => setCheck((current) => current ?? freshCheck()), 0);
     const url = new URL(window.location.href);
     if (!url.searchParams.has("new")) return;
     url.searchParams.delete("new");
@@ -1005,7 +1014,7 @@ export function CashierTouch({
 
   useEffect(() => {
     if (!sendCheck || !check) return;
-    setSendCheck(false);
+    window.setTimeout(() => setSendCheck(false), 0);
     checkForm.current?.requestSubmit();
   }, [sendCheck, check]);
 
@@ -1517,6 +1526,15 @@ export function CashierTouch({
                         secret,
                       })
                     }
+                    onVoidOrder={(secret) =>
+                      book.commit({
+                        id: crypto.randomUUID(),
+                        at: new Date().toISOString(),
+                        kind: "voidOrder",
+                        visitKey: visitKey(item),
+                        secret,
+                      })
+                    }
                     onOpenPlay={() => {
                       book.openBill(item.code);
                       setTab(item.code);
@@ -1627,7 +1645,7 @@ export function CashierTouch({
                 code={visit.code}
                 phone={visit.phone}
                 qr={qr}
-                children={visit.childCount}
+                childCount={visit.childCount}
                 started={visit.createdAt}
                 ends={visit.paidUntil}
               />
@@ -2230,6 +2248,7 @@ function BillTab({
   onDrop,
   onDeliver,
   onVoid,
+  onVoidOrder,
   onOpenPlay,
 }: {
   visit: VisitView;
@@ -2240,8 +2259,10 @@ function BillTab({
   onDrop: (line: VisitView["lines"][number]) => void;
   onDeliver: (line: VisitView["lines"][number]) => void;
   onVoid: (line: VisitView["lines"][number], next: number, secret: string) => void;
+  onVoidOrder: (secret: string) => void;
   onOpenPlay: () => void;
 }) {
+  const unpaidLines = visit.lines.filter((line) => !line.paid);
   const rows = [
     ...visit.blocks.map((block) => ({
       key: `play-${block.id}`,
@@ -2264,6 +2285,7 @@ function BillTab({
   ];
   const [at, setAt] = useState(0);
   const [voiding, setVoiding] = useState<{ lineId: number; next: number } | null>(null);
+  const [voidOrderOpen, setVoidOrderOpen] = useState(false);
   useEffect(() => {
     if (!active) return;
     function onKey(event: KeyboardEvent) {
@@ -2310,6 +2332,13 @@ function BillTab({
   const cursor = Math.min(at, Math.max(0, rows.length - 1));
   return (
     <>
+    {unpaidLines.length > 0 ? (
+      <div className="flex items-center justify-end gap-2 border-b px-3 py-2">
+        <Button type="button" size="sm" variant="destructive" onClick={() => setVoidOrderOpen(true)}>
+          Void table order
+        </Button>
+      </div>
+    ) : null}
     <Table>
       <TableHeader>
         <TableRow>
@@ -2394,6 +2423,18 @@ function BillTab({
         setVoiding(null);
       }}
     />
+    <OrderVoid
+      open={voidOrderOpen}
+      visit={visit}
+      lines={unpaidLines}
+      venueName={venueName}
+      staffName={staffName}
+      onClose={() => setVoidOrderOpen(false)}
+      onVoid={(secret) => {
+        onVoidOrder(secret);
+        setVoidOrderOpen(false);
+      }}
+    />
     </>
   );
 }
@@ -2416,13 +2457,17 @@ function LineVoid({
   onVoid: (secret: string) => void;
 }) {
   const closeRef = useRef(onClose);
-  closeRef.current = onClose;
+  useEffect(() => {
+    closeRef.current = onClose;
+  });
   const slipRef = useRef(line);
-  if (line) slipRef.current = line;
-  const slip = line ?? slipRef.current;
+
+  const slip = line;
   const [armed, setArmed] = useState(false);
   const [stamp, setStamp] = useState("");
   const [cancelQty, setCancelQty] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [pinError, setPinError] = useState("");
 
   useEffect(() => {
     if (!armed) return;
@@ -2444,7 +2489,7 @@ function LineVoid({
   }, [armed]);
 
   return (
-    <Dialog open={line != null || armed} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={line != null || armed} onOpenChange={(open) => !open && !busy && onClose()}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Void a sent dish</DialogTitle>
@@ -2457,24 +2502,40 @@ function LineVoid({
             className="grid gap-3"
             onSubmit={(event) => {
               event.preventDefault();
+              if (busy || !line) return;
               const pin = String(new FormData(event.currentTarget).get("secret") ?? "").trim();
-              if (!pin || !line) return;
-              const qty = Math.max(0, line.firedQty - next);
-              onVoid(pin);
-              if (qty > 0) {
-                setCancelQty(qty);
-                setStamp(new Date().toISOString());
-                setArmed(true);
+              if (!pin) {
+                setPinError("Enter the owner PIN.");
                 return;
               }
-              onClose();
+              setBusy(true);
+              window.setTimeout(() => setPinError(""), 0);
+              void (async () => {
+                const failed = await checkOwnerPin(pin);
+                if (failed) {
+                  setPinError(failed);
+                  window.setTimeout(() => setBusy(false), 0);
+                  return;
+                }
+                const qty = Math.max(0, line.firedQty - next);
+                onVoid(pin);
+                window.setTimeout(() => setBusy(false), 0);
+                if (qty > 0) {
+                  setCancelQty(qty);
+                  setStamp(new Date().toISOString());
+                  setArmed(true);
+                  return;
+                }
+                onClose();
+              })();
             }}
           >
             <Field label="Owner PIN">
               <Input name="secret" type="text" autoComplete="off" autoCapitalize="off" spellCheck={false} autoFocus className="till-secret" />
             </Field>
-            <Button type="submit" variant="destructive">
-              Void
+            {pinError ? <p className="text-sm text-destructive">{pinError}</p> : null}
+            <Button type="submit" variant="destructive" disabled={busy}>
+              {busy ? "Checking…" : "Void"}
             </Button>
             {armed ? (
               <PrintPortal>
@@ -2494,6 +2555,169 @@ function LineVoid({
             ) : null}
           </form>
         ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function OrderVoid({
+  open,
+  visit,
+  lines,
+  venueName,
+  staffName,
+  onClose,
+  onVoid,
+}: {
+  open: boolean;
+  visit: VisitView;
+  lines: VisitView["lines"];
+  venueName: string;
+  staffName: string;
+  onClose: () => void;
+  onVoid: (secret: string) => void;
+}) {
+  const closeRef = useRef(onClose);
+  useEffect(() => {
+    closeRef.current = onClose;
+  });
+  const slipsRef = useRef(lines);
+
+  const slips = lines;
+  const [armed, setArmed] = useState(false);
+  const [stamp, setStamp] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [pinError, setPinError] = useState("");
+
+  const cancelLines = slips
+    .map((line) => ({
+      name: line.name,
+      qty: Math.max(0, line.firedQty),
+      outlet: line.outlet,
+      note: "Cancel",
+    }))
+    .filter((line) => line.qty > 0);
+  const kotCancel = cancelLines.filter((line) => line.outlet !== "cafe");
+  const botCancel = cancelLines.filter((line) => line.outlet === "cafe");
+
+  useEffect(() => {
+    if (!open) {
+      window.setTimeout(() => setArmed(false), 0);
+      window.setTimeout(() => setStamp(""), 0);
+      window.setTimeout(() => setBusy(false), 0);
+      window.setTimeout(() => setPinError(""), 0);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!armed) return;
+    document.body.dataset.print = "kot";
+    let closed = false;
+    const finish = () => {
+      if (closed) return;
+      closed = true;
+      delete document.body.dataset.print;
+      closeRef.current();
+    };
+    window.addEventListener("afterprint", finish);
+    const timer = window.setTimeout(finish, 4000);
+    window.print();
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("afterprint", finish);
+    };
+  }, [armed]);
+
+  return (
+    <Dialog open={open || armed} onOpenChange={(next) => !next && !busy && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Void table order</DialogTitle>
+          <DialogDescription>
+            Removes every unpaid food and drink line. Play stays open. Sent kitchen tickets print as cancels.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          className="grid gap-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (busy || !slips.length) return;
+            const pin = String(new FormData(event.currentTarget).get("secret") ?? "").trim();
+            if (!pin) {
+              setPinError("Enter the owner PIN.");
+              return;
+            }
+            setBusy(true);
+            window.setTimeout(() => setPinError(""), 0);
+            void (async () => {
+              const failed = await checkOwnerPin(pin);
+              if (failed) {
+                setPinError(failed);
+                window.setTimeout(() => setBusy(false), 0);
+                return;
+              }
+              onVoid(pin);
+              window.setTimeout(() => setBusy(false), 0);
+              if (cancelLines.length > 0) {
+                setStamp(new Date().toISOString());
+                setArmed(true);
+                return;
+              }
+              onClose();
+            })();
+          }}
+        >
+          <ul className="max-h-40 space-y-1 overflow-auto text-sm">
+            {slips.map((line) => (
+              <li key={line.id} className="flex justify-between gap-3">
+                <span>
+                  {line.qty} × {line.name}
+                  {line.firedQty > 0 ? " · sent" : ""}
+                </span>
+                <span className="tabular-nums text-muted-foreground">{formatNu(line.amountNu)}</span>
+              </li>
+            ))}
+          </ul>
+          <Field label="Owner PIN">
+            <Input name="secret" type="text" autoComplete="off" autoCapitalize="off" spellCheck={false} autoFocus className="till-secret" />
+          </Field>
+          {pinError ? <p className="text-sm text-destructive">{pinError}</p> : null}
+          <Button type="submit" variant="destructive" disabled={busy || !slips.length}>
+            {busy ? "Checking…" : "Void table order"}
+          </Button>
+          {armed ? (
+            <PrintPortal>
+              {kotCancel.length > 0 ? (
+                <KotSlip
+                  venue={venueName}
+                  tableNo={visit.tableNo || "Counter"}
+                  phone={visit.phone}
+                  code={visit.code}
+                  orderedAt={stamp || new Date().toISOString()}
+                  staff={staffName}
+                  reprint={false}
+                  cancel
+                  ticket="kot"
+                  lines={kotCancel}
+                />
+              ) : null}
+              {botCancel.length > 0 ? (
+                <KotSlip
+                  venue={venueName}
+                  tableNo={visit.tableNo || "Counter"}
+                  phone={visit.phone}
+                  code={visit.code}
+                  orderedAt={stamp || new Date().toISOString()}
+                  staff={staffName}
+                  reprint={false}
+                  cancel
+                  ticket="bot"
+                  lines={botCancel}
+                />
+              ) : null}
+            </PrintPortal>
+          ) : null}
+        </form>
       </DialogContent>
     </Dialog>
   );
@@ -2712,7 +2936,7 @@ function MenuSheet({
   );
 
   useEffect(() => {
-    setAt(0);
+    window.setTimeout(() => setAt(0), 0);
   }, [needle]);
 
   useEffect(() => {
@@ -3041,7 +3265,7 @@ function PayRail({
       setAt(extendAt >= 0 ? extendAt : 0);
       return;
     }
-    setAt(0);
+    window.setTimeout(() => setAt(0), 0);
   }, [keyed, start]);
   useEffect(() => {
     if (!keyed) return;
@@ -3274,17 +3498,20 @@ function QtyField({
 }) {
   const [text, setText] = useState(String(line.qty));
   useEffect(() => {
-    setText(String(line.qty));
+    const nextQty = String(line.qty);
+    window.setTimeout(() => setText(nextQty), 0);
   }, [line.qty]);
 
   function apply(nextQty: number) {
     const next = Math.round(nextQty);
     if (!Number.isFinite(next) || next === line.qty) {
-      setText(String(line.qty));
+      const nextQty = String(line.qty);
+    window.setTimeout(() => setText(nextQty), 0);
       return;
     }
     if (next < line.firedQty) {
-      setText(String(line.qty));
+      const nextQty = String(line.qty);
+    window.setTimeout(() => setText(nextQty), 0);
       onBelowFired(Math.max(0, next));
       return;
     }

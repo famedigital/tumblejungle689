@@ -24,6 +24,7 @@ import {
   settleComplimentary,
   payFirstPlay,
   voidLineTo,
+  voidTableOrder,
   voidVisit,
   waiveOvertime,
   changeLineQty,
@@ -220,12 +221,13 @@ async function runOp(op: TillOp, session: Session): Promise<VisitView> {
   }
   if (op.kind === "leave") return leaveOnTime(visit.id, { id: session.staffId, name: session.name });
   if (op.kind === "cancel") return cancelHold(visit.id, { id: session.staffId, name: session.name });
-  if (op.kind === "waive" || op.kind === "voidVisit" || op.kind === "voidLine") {
+  if (op.kind === "waive" || op.kind === "voidVisit" || op.kind === "voidLine" || op.kind === "voidOrder") {
     const manager = await findStaffBySecret(op.secret);
     if (!manager || manager.role !== "admin") throw new Error("Owner PIN was not recognised.");
     const actor = { id: manager.id, name: manager.name };
     if (op.kind === "waive") return waiveOvertime(visit.id, actor);
     if (op.kind === "voidVisit") return voidVisit(visit.id, actor);
+    if (op.kind === "voidOrder") return voidTableOrder(visit.id, actor);
     return voidLineTo(await lineId(visit.id, op.lineKey), op.nextQty, actor);
   }
   if (op.kind === "settle" && op.method === "comp") {

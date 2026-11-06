@@ -8,13 +8,17 @@ import { formatPhone, formatWhen } from "@/lib/format";
 import { quoteOvertime } from "@/lib/overtime";
 import { bankFromJournal } from "@/lib/pay-banks";
 
+function getReceiptOvertime(paidUntil: string, rates: Parameters<typeof quoteOvertime>[1], extraPerMinNu: number) {
+  return quoteOvertime(paidUntil, rates, Date.now(), extraPerMinNu);
+}
+
 export default async function ReceiptPage({ params }: { params: Promise<{ code: string }> }) {
   await requireArea("cashier");
   const { code } = await params;
   const visit = await getVisitByCode(code);
   if (!visit) notFound();
   const settings = await getSettings();
-  const overtime = visit.status === "open" ? quoteOvertime(visit.paidUntil, settings.rates, Date.now(), settings.extraPerMinNu) : null;
+  const overtime = visit.status === "open" ? getReceiptOvertime(visit.paidUntil, settings.rates, settings.extraPerMinNu) : null;
   const lines = [
     ...visit.blocks.map((block) => ({
       name: `Play ${block.minutes} min`,

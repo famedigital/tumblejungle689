@@ -10,7 +10,8 @@ export function StickerSheet({
   code,
   phone,
   qr,
-  children,
+  childCount,
+  children: legacyChildren,
   started,
   ends,
   back,
@@ -19,12 +20,14 @@ export function StickerSheet({
   code: string;
   phone: string;
   qr: string;
-  children: number;
+  childCount?: number;
+  children?: number;
   started: string;
   ends: string;
   back: string;
 }) {
-  const kids = Math.max(0, children);
+  const count = childCount ?? legacyChildren ?? 1;
+  const kids = Math.max(0, count);
 
   function printStickers() {
     document.body.dataset.print = "sticker";
@@ -56,7 +59,7 @@ export function StickerSheet({
         </div>
       </header>
       <section className="sticker-desk" aria-label="Play pass preview">
-        <PlayPass venue={venue} code={code} phone={phone} qr={qr} children={kids} started={started} ends={ends} />
+        <PlayPass venue={venue} code={code} phone={phone} qr={qr} childCount={kids} started={started} ends={ends} />
         <p className="no-print sticker-note">Prints on 80mm paper. Scan it at the till to open this visit.</p>
       </section>
     </main>

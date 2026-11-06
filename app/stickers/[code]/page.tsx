@@ -23,7 +23,7 @@ export default async function StickersPage({ params }: { params: Promise<{ code:
       code={visit.code}
       phone={visit.phone}
       qr={qr}
-      children={visit.childCount}
+      childCount={visit.childCount}
       started={visit.createdAt}
       ends={visit.paidUntil}
       back={back}

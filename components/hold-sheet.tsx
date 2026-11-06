@@ -301,7 +301,9 @@ function OvertimeGate({
   const formRef = useRef<HTMLFormElement>(null);
   const pinRef = useRef<HTMLInputElement>(null);
   const closeRef = useRef(onClose);
-  closeRef.current = onClose;
+  useEffect(() => {
+    closeRef.current = onClose;
+  });
   const [armed, setArmed] = useState(false);
   const [stamp, setStamp] = useState("");
   const [pinError, setPinError] = useState("");

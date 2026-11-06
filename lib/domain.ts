@@ -872,6 +872,20 @@ export async function waiveOvertime(visitId: number, actor: TillActor): Promise<
   return (await getVisitById(visitId))!;
 }
 
+/** Delete every unpaid food line on a visit. Does not touch play or close the visit. */
+export async function voidTableOrder(visitId: number, actor: TillActor): Promise<VisitView> {
+  const visit = await requireOpen(visitId);
+  const foodDue = unpaidFood(visit);
+  if (foodDue <= 0 && !visit.lines.some((line) => !line.paid)) {
+    throw new Error("There is no open table order to void.");
+  }
+  await tx(async (database) => {
+    await writeTillEvent(database, visit, actor, "void", foodDue, "Void table order");
+    await database.exec("DELETE FROM tab_lines WHERE visit_id = ? AND paid = 0", [visitId]);
+  });
+  return (await getVisitById(visitId))!;
+}
+
 export async function voidLineTo(lineId: number, nextQty: number, actor: TillActor): Promise<VisitView> {
   const line = await query().one<{
     id: number;

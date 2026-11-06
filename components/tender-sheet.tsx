@@ -144,11 +144,16 @@ export function TenderSheet({
     return () => window.removeEventListener("keydown", onKey, true);
   }, [method, onMethod, onPrint, bankNu, journal, allowComp]);
 
+  const [prevMethod, setPrevMethod] = useState(method);
+  if (method !== prevMethod) {
+    setPrevMethod(method);
+    setPinError("");
+  }
+
   useEffect(() => {
     if (method === "bank_qr") journalRef.current?.focus();
     if (method === "split") cashRef.current?.focus();
     if (method === "comp") pinRef.current?.focus();
-    setPinError("");
   }, [method]);
 
   useEffect(() => {
@@ -179,9 +184,12 @@ export function TenderSheet({
     if (!form) return;
     form.requestSubmit();
   }
-  submitCompRef.current = () => {
-    void submitComp();
-  };
+
+  useEffect(() => {
+    submitCompRef.current = () => {
+      void submitComp();
+    };
+  });
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>

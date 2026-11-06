@@ -23,10 +23,7 @@ export function PayQr({
   const payload = buildDynamicEmv(staticPayload, amountNu, note);
 
   useEffect(() => {
-    if (!payload) {
-      setSrc("");
-      return;
-    }
+    if (!payload) return;
     let gone = false;
     void import("qrcode")
       .then((mod) =>
@@ -48,6 +45,8 @@ export function PayQr({
     };
   }, [payload, strong]);
 
+  const activeSrc = payload ? src : "";
+
   if (!staticPayload) {
     return (
       <p className="text-sm text-muted-foreground">
@@ -59,9 +58,9 @@ export function PayQr({
 
   return (
     <div className="flex flex-col items-center gap-2">
-      {src ? (
+      {activeSrc ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={src} alt={`Bank QR for ${formatNu(amountNu)}`} className={`${strong ? "size-56" : compact ? "size-36" : "size-52"} rounded-lg bg-white p-1.5`} />
+        <img src={activeSrc} alt={`Bank QR for ${formatNu(amountNu)}`} className={`${strong ? "size-56" : compact ? "size-36" : "size-52"} rounded-lg bg-white p-1.5`} />
       ) : (
         <div className={`${compact ? "size-36" : "size-52"} animate-pulse rounded-lg bg-muted`} />
       )}

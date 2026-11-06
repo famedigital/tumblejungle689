@@ -7,12 +7,10 @@ import { formatNu } from "@/lib/format";
 import { isPoleHello, isPoleJournal, isPolePayload, poleHello, poleReadLast, POLE_CHANNEL, type PolePayload } from "@/lib/pole";
 
 export function CustomerDisplay({ journalScan }: { journalScan: boolean }) {
-  const [pole, setPole] = useState<PolePayload | null>(null);
+  const [pole, setPole] = useState<PolePayload | null>(() => poleReadLast());
   const [qrSrc, setQrSrc] = useState("");
 
   useEffect(() => {
-    const last = poleReadLast();
-    if (last) setPole(last);
     poleHello();
     const channel = new BroadcastChannel(POLE_CHANNEL);
     channel.onmessage = (event) => {
@@ -23,10 +21,7 @@ export function CustomerDisplay({ journalScan }: { journalScan: boolean }) {
   }, []);
 
   useEffect(() => {
-    if (!pole?.qr) {
-      setQrSrc("");
-      return;
-    }
+    if (!pole?.qr) return;
     let gone = false;
     void import("qrcode")
       .then((mod) =>
@@ -48,6 +43,7 @@ export function CustomerDisplay({ journalScan }: { journalScan: boolean }) {
     };
   }, [pole?.qr]);
 
+  const activeQrSrc = pole?.qr ? qrSrc : "";
   const shop = pole?.shop || "Tumble Jungle";
   const idle = !pole?.code && !pole?.thanks && !pole?.qr;
   const payAmount = pole && (pole.payNu ?? 0) > 0 ? pole.payNu : pole?.due ?? 0;
@@ -82,7 +78,7 @@ export function CustomerDisplay({ journalScan }: { journalScan: boolean }) {
             ))}
           </ul>
           <aside className="flex flex-col items-center justify-center rounded-3xl bg-card px-6 py-8 text-center ring-1 ring-foreground/10">
-            {pole && pole.due > 0 && qrSrc ? (
+            {pole && pole.due > 0 && activeQrSrc ? (
               <>
                 <p className="text-sm tracking-[0.16em] text-muted-foreground uppercase">Scan and pay</p>
                 <p className="mt-1 font-heading text-5xl text-primary tabular-nums sm:text-6xl">{formatNu(payAmount)}</p>
@@ -91,7 +87,7 @@ export function CustomerDisplay({ journalScan }: { journalScan: boolean }) {
                 ) : null}
                 {pole.extra ? <p className="mt-2 max-w-sm text-lg">{pole.extra}</p> : null}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={qrSrc} alt={`Scan and pay ${formatNu(payAmount)}`} className="mt-4 size-[min(70vw,22rem)] rounded-2xl bg-white p-3" />
+                <img src={activeQrSrc} alt={`Scan and pay ${formatNu(payAmount)}`} className="mt-4 size-[min(70vw,22rem)] rounded-2xl bg-white p-3" />
                 <p className="mt-3 text-lg">mBoB or your bank app</p>
                 <JournalWatch active={journalScan} amountNu={payAmount} />
               </>

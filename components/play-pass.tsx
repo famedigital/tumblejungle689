@@ -5,7 +5,8 @@ export function PlayPass({
   code,
   phone,
   qr,
-  children,
+  childCount,
+  children: legacyChildren,
   started,
   ends,
 }: {
@@ -13,11 +14,13 @@ export function PlayPass({
   code: string;
   phone: string;
   qr: string;
-  children: number;
+  childCount?: number;
+  children?: number;
   started: string;
   ends: string;
 }) {
-  const kids = Math.max(0, children);
+  const count = childCount ?? legacyChildren ?? 1;
+  const kids = Math.max(0, count);
   return (
     <div className="print-sticker-sheet">
       <article className="print-sticker">

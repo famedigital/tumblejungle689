@@ -9,7 +9,6 @@ import {
   Coffee,
   QrCode,
   Store,
-  Timer,
   UtensilsCrossed,
   Wallet,
 } from "lucide-react";
@@ -27,6 +26,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { AtherosBentoDeck } from "@/components/deck/AtherosBentoDeck";
 import { formatNu, formatPhone, formatWhen } from "@/lib/format";
 import type { FloorPulse } from "@/lib/domain";
 
@@ -52,12 +52,6 @@ export function FloorBoard({ pulse }: { pulse: FloorPulse }) {
     { name: "Bank QR", value: summary.bankNu, fill: LILAC },
   ].filter((row) => row.value > 0);
   const stationPeak = Math.max(1, ...pulse.stations.map((row) => row.amount));
-  const stats = [
-    { label: "Takings", value: formatNu(summary.totalNu), hint: summary.key, icon: Wallet, wash: "bg-[#ffd6e8]" },
-    { label: "Play", value: formatNu(summary.playNu), hint: "Desk and extra time", icon: Timer, wash: "bg-[#e4d4ff]" },
-    { label: "Food", value: formatNu(summary.foodNu), hint: "Cafe and restaurant", icon: UtensilsCrossed, wash: "bg-[#d7fff3]" },
-    { label: "On the floor", value: String(summary.openCount), hint: `${summary.settledCount} closed today`, icon: Activity, wash: "bg-[#fff3bf]" },
-  ];
 
   return (
     <div className="space-y-4">
@@ -69,29 +63,26 @@ export function FloorBoard({ pulse }: { pulse: FloorPulse }) {
         Live floor · refreshes every 12 seconds · {formatWhen(pulse.at)}
       </p>
 
-      <section className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:grid sm:grid-cols-2 sm:overflow-visible sm:px-0 xl:grid-cols-4">
-        {stats.map((stat) => (
-          <article key={stat.label} className={`w-[11.5rem] shrink-0 rounded-3xl p-4 sm:w-auto ${stat.wash}`}>
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-medium">{stat.label}</p>
-              <stat.icon className="size-5" aria-hidden />
-            </div>
-            <p className="mt-2 font-heading text-3xl tabular-nums">{stat.value}</p>
-            <p className="text-xs text-foreground/70">{stat.hint}</p>
-          </article>
-        ))}
-      </section>
+      <AtherosBentoDeck
+        takingsNu={summary.totalNu}
+        cashNu={summary.cashNu}
+        bankNu={summary.bankNu}
+        activeJumpers={summary.openCount}
+        maxCapacity={45}
+        overtimeCount={0}
+        activeKotOrders={0}
+      />
 
       <section className="grid gap-3 lg:grid-cols-5">
-        <article className="rounded-3xl bg-card p-4 ring-1 ring-foreground/10 lg:col-span-3">
+        <article className="glass-panel glass-interactive rounded-2xl p-4 lg:col-span-3">
           <header className="mb-2 flex items-center gap-2">
-            <Clock3 className="size-4 text-primary" aria-hidden />
+            <Clock3 className="size-4 text-emerald-600 dark:text-emerald-400" aria-hidden />
             <h2 className="font-heading text-xl">Today by hour</h2>
           </header>
           <div className="h-52">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={pulse.hours}>
-                <CartesianGrid vertical={false} stroke="oklch(0.9 0.04 350)" />
+                <CartesianGrid vertical={false} stroke="rgba(226, 232, 240, 0.4)" />
                 <XAxis dataKey="hour" tick={{ fontSize: 11 }} interval={1} />
                 <YAxis tick={{ fontSize: 11 }} width={36} />
                 <Tooltip formatter={(value) => formatNu(Number(value ?? 0))} />
@@ -101,15 +92,15 @@ export function FloorBoard({ pulse }: { pulse: FloorPulse }) {
             </ResponsiveContainer>
           </div>
         </article>
-        <article className="rounded-3xl bg-card p-4 ring-1 ring-foreground/10 lg:col-span-2">
+        <article className="glass-panel glass-interactive rounded-2xl p-4 lg:col-span-2">
           <header className="mb-2 flex items-center gap-2">
-            <Banknote className="size-4 text-primary" aria-hidden />
+            <Banknote className="size-4 text-emerald-600 dark:text-emerald-400" aria-hidden />
             <h2 className="font-heading text-xl">This week</h2>
           </header>
           <div className="h-52">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={pulse.week}>
-                <CartesianGrid vertical={false} stroke="oklch(0.9 0.04 350)" />
+                <CartesianGrid vertical={false} stroke="rgba(226, 232, 240, 0.4)" />
                 <XAxis dataKey="day" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} width={36} />
                 <Tooltip formatter={(value) => formatNu(Number(value ?? 0))} />
@@ -123,9 +114,9 @@ export function FloorBoard({ pulse }: { pulse: FloorPulse }) {
       <section className="grid gap-3 lg:grid-cols-3">
         <MixChart title="Play and food" icon={UtensilsCrossed} rows={mix} empty="No takings yet today." />
         <MixChart title="Cash and bank QR" icon={QrCode} rows={tenders} empty="No tenders yet today." />
-        <article className="rounded-3xl bg-card p-4 ring-1 ring-foreground/10">
+        <article className="glass-panel glass-interactive rounded-2xl p-4">
           <header className="mb-3 flex items-center gap-2">
-            <Store className="size-4 text-primary" aria-hidden />
+            <Store className="size-4 text-emerald-600 dark:text-emerald-400" aria-hidden />
             <h2 className="font-heading text-xl">By counter</h2>
           </header>
           <ul className="space-y-3">
@@ -150,9 +141,9 @@ export function FloorBoard({ pulse }: { pulse: FloorPulse }) {
         </article>
       </section>
 
-      <article className="rounded-3xl bg-card p-4 ring-1 ring-foreground/10">
+      <article className="glass-panel glass-interactive rounded-2xl p-4">
         <header className="mb-3 flex items-center gap-2">
-          <Activity className="size-4 text-primary" aria-hidden />
+          <Activity className="size-4 text-emerald-600 dark:text-emerald-400" aria-hidden />
           <h2 className="font-heading text-xl">Open visits</h2>
         </header>
         {pulse.open.length === 0 ? <p className="text-sm text-muted-foreground">The floor is clear.</p> : null}
@@ -161,7 +152,14 @@ export function FloorBoard({ pulse }: { pulse: FloorPulse }) {
             const overtime = visit.minutes < 0;
             const width = overtime ? 100 : Math.min(100, Math.round((visit.minutes / 120) * 100));
             return (
-              <li key={visit.code} className={`rounded-2xl p-3 ${overtime ? "bg-[#ffe1dc]" : "bg-[#d7fff3]"}`}>
+              <li
+                key={visit.code}
+                className={`rounded-2xl p-3 border transition-colors ${
+                  overtime
+                    ? "border-rose-500/40 bg-rose-500/10 dark:bg-rose-950/30"
+                    : "border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-950/20"
+                }`}
+              >
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-mono">{visit.code}</span>
                   <span className="text-sm">{formatPhone(visit.phone)}</span>
@@ -214,9 +212,9 @@ function MixChart({
   empty: string;
 }) {
   return (
-    <article className="rounded-3xl bg-card p-4 ring-1 ring-foreground/10">
+    <article className="glass-panel glass-interactive rounded-2xl p-4">
       <header className="mb-2 flex items-center gap-2">
-        <Icon className="size-4 text-primary" aria-hidden />
+        <Icon className="size-4 text-emerald-600 dark:text-emerald-400" aria-hidden />
         <h2 className="font-heading text-xl">{title}</h2>
       </header>
       {rows.length === 0 ? (

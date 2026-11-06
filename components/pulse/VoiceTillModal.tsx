@@ -93,20 +93,25 @@ export function VoiceTillModal({ open, onClose, onCommand }: Props) {
   }, [open, toggleListen]);
 
   useEffect(() => {
-    if (!open) {
+    return () => {
       stopListening();
-      setTranscript("");
-    }
-  }, [open, stopListening]);
+    };
+  }, [stopListening]);
+
+  const handleClose = () => {
+    stopListening();
+    setTranscript("");
+    onClose();
+  };
 
   const apply = () => {
     if (!draft) return;
     onCommand(draft);
-    onClose();
+    handleClose();
   };
 
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+    <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
       <DialogContent className="max-w-lg border-slate-200/80 bg-white/95 backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/95">
         <DialogHeader>
           <DialogTitle className="text-slate-900 dark:text-white">Quick Voice Till</DialogTitle>

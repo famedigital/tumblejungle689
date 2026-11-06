@@ -62,20 +62,28 @@ export function VisitBoard({
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
       <div className="space-y-4">
-        <div className="rounded-xl bg-card p-4 ring-1 ring-foreground/10">
+        <div className="glass-panel glass-interactive rounded-2xl p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="font-mono text-xl tracking-[0.16em]">{visit.code}</p>
-              <p className="text-sm text-muted-foreground">
+              <p className="tabular-nums-dense font-mono text-2xl font-bold tracking-[0.12em] text-slate-900 dark:text-white">
+                {visit.code}
+              </p>
+              <p className="text-sm text-slate-600 dark:text-slate-400">
                 {formatPhone(visit.phone)}
                 {visit.guardianName ? ` · ${visit.guardianName}` : ""} · {visit.childCount} children
               </p>
             </div>
-            <p className={left < 0 && visit.status === "open" ? "font-medium text-destructive" : "font-medium"}>
+            <p
+              className={
+                left < 0 && visit.status === "open"
+                  ? "rounded-full border border-rose-500/30 bg-rose-500/10 px-3 py-1 text-xs font-bold text-rose-600 dark:text-rose-400"
+                  : "rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-300"
+              }
+            >
               {visit.status === "settled"
                 ? `Closed ${visit.closedAt ? formatWhen(visit.closedAt) : ""}`
                 : left >= 0
-                  ? `${left} min left, until ${formatWhen(visit.paidUntil)}`
+                  ? `${left} min left · until ${formatWhen(visit.paidUntil)}`
                   : `${Math.abs(left)} min overtime`}
             </p>
           </div>
@@ -139,7 +147,7 @@ export function VisitBoard({
         ) : null}
       </div>
 
-      <aside className="space-y-4 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
+      <aside className="glass-panel glass-interactive space-y-4 rounded-2xl p-5">
         <h3 className="font-heading text-xl">Tab</h3>
         <ul className="space-y-2 text-sm">
           {visit.blocks.map((block) => (

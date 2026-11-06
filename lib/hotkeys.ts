@@ -103,7 +103,9 @@ function releaseAlt() {
 
 export function useTillHotkeys(onLetter: (letter: AltLetter) => void) {
   const handler = useRef(onLetter);
-  handler.current = onLetter;
+  useEffect(() => {
+    handler.current = onLetter;
+  });
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       const letter = takeAlt(event);
