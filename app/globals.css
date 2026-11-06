@@ -637,11 +637,17 @@
   padding: 2rem 1rem 3rem;
 }
 .receipt-stage .print-receipt,
-.receipt-preview .print-receipt {
+.receipt-preview .print-receipt,
+.print-receipt.receipt-screen-only {
   position: relative;
   left: auto;
   top: auto;
   box-shadow: 0 1px 0 #fff inset, 0 22px 50px rgb(22 36 42 / 16%);
+}
+@media print {
+  .print-receipt.receipt-screen-only {
+    display: none !important;
+  }
 }
 .receipt-preview {
   display: grid;

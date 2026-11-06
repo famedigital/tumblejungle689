@@ -46,6 +46,7 @@ export function slipTextForPrint(mode: PrintMode): string {
   const nodes = document.querySelectorAll(selectorFor(mode));
   const parts: string[] = [];
   nodes.forEach((node) => {
+    if ((node as HTMLElement).classList.contains("receipt-screen-only")) return;
     const text = (node as HTMLElement).innerText || node.textContent || "";
     const clean = text.replace(/\n{3,}/g, "\n\n").trim();
     if (clean) parts.push(clean);
@@ -95,12 +96,22 @@ function browserPrint(mode: PrintMode) {
 /**
  * When print station is ON (server or local): queue only — never open the browser print dialog.
  * When OFF: normal window.print().
+ * Pass forceBrowser: true (desktop till) to always open the system print dialog.
  */
 export async function thermalPrint(
   mode: PrintMode,
-  fallback?: Partial<PrintStationConfig>,
+  fallback?: Partial<PrintStationConfig> & { forceBrowser?: boolean },
 ): Promise<"station" | "browser"> {
+  // Wait for slip DOM (PrintPortal) before printing or enqueueing.
   const text = await slipTextWithRetry(mode);
+
+  if (fallback?.forceBrowser) {
+    if (!text) {
+      throw new Error("Nothing on screen to print yet. Open the receipt, then Print again.");
+    }
+    browserPrint(mode);
+    return "browser";
+  }
 
   // Ask the server by attempting enqueue — source of truth for “station on”.
   if (text) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/v2/supabase";
+import { supabase, REALTIME_CHANNEL } from "@/lib/v2/supabase";
 import type { V2PrintJob } from "@/lib/v2/types";
 import { Printer } from "lucide-react";
 
@@ -10,7 +10,7 @@ export function CounterPrintBridge() {
   const [printCount, setPrintCount] = useState(0);
 
   useEffect(() => {
-    const channel = supabase.channel("counter-print-bridge", {
+    const channel = supabase.channel(REALTIME_CHANNEL, {
       config: { broadcast: { self: true } },
     });
 
@@ -21,20 +21,22 @@ export function CounterPrintBridge() {
         setLastJob(job);
         setPrintCount((c) => c + 1);
 
-        // Play gentle chime
         try {
-          const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+          const ctx = new (window.AudioContext ||
+            (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
           const osc = ctx.createOscillator();
           const gain = ctx.createGain();
           osc.connect(gain);
           gain.connect(ctx.destination);
-          osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
-          osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15); // A5
+          osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15);
           gain.gain.setValueAtTime(0.2, ctx.currentTime);
           gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
           osc.start();
           osc.stop(ctx.currentTime + 0.35);
-        } catch {}
+        } catch {
+          /* audio optional */
+        }
       })
       .subscribe();
 
@@ -52,9 +54,7 @@ export function CounterPrintBridge() {
           <Printer className="h-4 w-4" />
         </div>
         <div className="flex-1 truncate">
-          <p className="font-bold truncate text-[11px] text-emerald-300">
-            {lastJob.title}
-          </p>
+          <p className="font-bold truncate text-[11px] text-emerald-300">{lastJob.title}</p>
           <p className="text-[10px] text-slate-400 truncate">
             {lastJob.staffName} ({lastJob.deviceLabel})
           </p>

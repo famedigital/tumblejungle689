@@ -25,16 +25,20 @@ import {
   SlidersHorizontal,
   X,
   LogOut,
+  Users,
+  KeyRound,
 } from "lucide-react";
 import { PayQr } from "@/components/pay-qr";
-import type { MenuItem, Rate } from "@/lib/types";
+import type { MenuItem, Rate, Role, StaffRow } from "@/lib/types";
 
-type AdminTab = "sales" | "menu" | "stock" | "rates" | "settings";
+type AdminTab = "sales" | "menu" | "stock" | "rates" | "settings" | "staff";
+
+const STAFF_ROLES: Role[] = ["admin", "frontdesk", "cafe", "restaurant", "cashier"];
 
 function AdminDashboardInner() {
   const searchParams = useSearchParams();
   const tabParam = searchParams.get("tab") as AdminTab | null;
-  const validTabs: AdminTab[] = ["sales", "menu", "stock", "rates", "settings"];
+  const validTabs: AdminTab[] = ["sales", "menu", "stock", "rates", "settings", "staff"];
 
   const urlTab: AdminTab = tabParam && validTabs.includes(tabParam) ? tabParam : "sales";
   const [selectedTab, setSelectedTab] = useState<AdminTab | null>(null);
@@ -53,8 +57,16 @@ function AdminDashboardInner() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
+  const [accessDenied, setAccessDenied] = useState(false);
 
   // Data
+  const [staffRows, setStaffRows] = useState<StaffRow[]>([]);
+  const [newStaffName, setNewStaffName] = useState("");
+  const [newStaffRole, setNewStaffRole] = useState<Role>("cashier");
+  const [newStaffPin, setNewStaffPin] = useState("");
+  const [staffDrafts, setStaffDrafts] = useState<
+    Record<number, { name: string; role: Role; pin: string }>
+  >({});
   const [dayMetrics, setDayMetrics] = useState({
     totalNu: 0,
     playNu: 0,
@@ -123,10 +135,23 @@ function AdminDashboardInner() {
   const [restockModalItem, setRestockModalItem] = useState<MenuItem | null>(null);
   const [restockQty, setRestockQty] = useState(12);
 
+  const syncStaffDrafts = (rows: StaffRow[]) => {
+    const next: Record<number, { name: string; role: Role; pin: string }> = {};
+    for (const row of rows) {
+      next[row.id] = { name: row.name, role: row.role, pin: "" };
+    }
+    setStaffDrafts(next);
+    setStaffRows(rows);
+  };
+
   const fetchAdminData = async () => {
     try {
       setLoading(true);
       const res = await fetch("/api/v2/admin/data");
+      if (res.status === 401) {
+        setAccessDenied(true);
+        return;
+      }
       if (!res.ok) throw new Error("Failed to load admin data");
       const data = await res.json();
       setDayMetrics(data.day);
@@ -137,6 +162,8 @@ function AdminDashboardInner() {
       setRates(data.settings.rates || []);
       setExtraPerMinNu(data.settings.extraPerMinNu || 10);
       setVenueSettings(data.settings);
+      if (Array.isArray(data.staff)) syncStaffDrafts(data.staff);
+      setAccessDenied(false);
     } catch (err) {
       console.error("Admin fetch error:", err);
     } finally {
@@ -144,30 +171,49 @@ function AdminDashboardInner() {
     }
   };
 
+  const postStaffAction = async (body: Record<string, unknown>) => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/v2/admin/staff", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error(data.error || "Staff update failed");
+      if (Array.isArray(data.staff)) syncStaffDrafts(data.staff);
+      triggerToast("Staff saved");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Staff update failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   useEffect(() => {
     let mounted = true;
-    fetch("/api/v2/admin/data")
+    fetch("/api/auth/me")
       .then((res) => res.json())
-      .then((data) => {
+      .then((me) => {
         if (!mounted) return;
-        setDayMetrics(data.day);
-        setMenu(data.menu);
-        setCategories(data.categories);
-        setStockItems(data.stock);
-        setPurchases(data.purchases || []);
-        setRates(data.settings.rates || []);
-        setExtraPerMinNu(data.settings.extraPerMinNu || 10);
-        setVenueSettings(data.settings);
-        setLoading(false);
+        if (!me?.session || me.session.role !== "admin") {
+          setAccessDenied(true);
+          setLoading(false);
+          return;
+        }
+        return fetchAdminData();
       })
-      .catch((err) => {
-        console.error("Admin fetch error:", err);
-        if (mounted) setLoading(false);
+      .catch(() => {
+        if (mounted) {
+          setAccessDenied(true);
+          setLoading(false);
+        }
       });
 
     return () => {
       mounted = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const triggerToast = (msg: string) => {
@@ -456,30 +502,55 @@ function AdminDashboardInner() {
     return true;
   });
 
+  if (accessDenied) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-[#090d16] flex flex-col items-center justify-center gap-4 p-6 text-center">
+        <p className="font-bold text-slate-900 dark:text-white">Admin only</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm">
+          Sign in with an admin PIN to open Menu, Stock, Staff, and venue settings.
+        </p>
+        <div className="flex gap-2">
+          <Link
+            href="/v2"
+            className="px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-bold"
+          >
+            Back to POS
+          </Link>
+          <Link
+            href="/login?next=/v2/admin"
+            className="px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-sm font-semibold text-slate-800 dark:text-slate-200"
+          >
+            Admin login
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#090d16] text-slate-900 dark:text-slate-100 flex flex-col font-sans antialiased selection:bg-emerald-500 selection:text-white">
       {/* Top Admin Navigation Header */}
-      <header className="sticky top-0 z-40 w-full border-b border-slate-200/80 dark:border-white/10 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl px-4 md:px-8 py-3.5 transition-colors">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
+      <header className="sticky top-0 z-40 w-full border-b border-slate-200/80 dark:border-white/10 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl px-3 sm:px-4 md:px-8 py-2.5 sm:py-3.5 transition-colors">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <Link
               href="/v2"
-              className="p-2 rounded-xl border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors"
+              className="p-2 rounded-xl border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors shrink-0"
               title="Return to POS"
             >
               <ArrowLeft className="h-4 w-4" />
             </Link>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h1 className="font-extrabold text-base md:text-lg tracking-tight text-slate-900 dark:text-white">
-                  Admin Command Hub
+                <h1 className="font-extrabold text-sm sm:text-base md:text-lg tracking-tight text-slate-900 dark:text-white truncate">
+                  Admin Hub
                 </h1>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300">
+                <span className="hidden sm:inline px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300">
                   Manager
                 </span>
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {venueSettings.venueName} • Real-time Sync
+              <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 truncate">
+                {venueSettings.venueName}
               </p>
             </div>
           </div>
@@ -516,14 +587,15 @@ function AdminDashboardInner() {
       </header>
 
       {/* Main Tab Switcher Bar */}
-      <div className="border-b border-slate-200/80 dark:border-white/10 bg-white/50 dark:bg-slate-900/50 backdrop-blur-md px-4 md:px-8">
-        <div className="max-w-7xl mx-auto flex items-center gap-1.5 overflow-x-auto py-2.5 scrollbar-none">
+      <div className="border-b border-slate-200/80 dark:border-white/10 bg-white/50 dark:bg-slate-900/50 backdrop-blur-md px-2 sm:px-4 md:px-8 sticky top-[52px] sm:top-[60px] z-30">
+        <div className="max-w-7xl mx-auto flex items-center gap-1 overflow-x-auto py-2 scrollbar-none -mx-1 px-1">
           {[
-            { id: "sales" as AdminTab, label: "Sales & Auditor", icon: TrendingUp },
-            { id: "menu" as AdminTab, label: "Menu & Prices", icon: Tag },
-            { id: "stock" as AdminTab, label: `Stock (${lowStockCount} Low)`, icon: Package, badge: lowStockCount > 0 },
-            { id: "rates" as AdminTab, label: "Play Durations", icon: Clock },
-            { id: "settings" as AdminTab, label: "Bank QR & Venue", icon: QrCode },
+            { id: "sales" as AdminTab, label: "Sales", short: "Sales", icon: TrendingUp },
+            { id: "menu" as AdminTab, label: "Menu & Prices", short: "Menu", icon: Tag },
+            { id: "stock" as AdminTab, label: `Stock (${lowStockCount} Low)`, short: "Stock", icon: Package, badge: lowStockCount > 0 },
+            { id: "rates" as AdminTab, label: "Play Durations", short: "Rates", icon: Clock },
+            { id: "staff" as AdminTab, label: "Staff & PINs", short: "Staff", icon: Users },
+            { id: "settings" as AdminTab, label: "Bank QR & Venue", short: "Venue", icon: QrCode },
           ].map((tab) => {
             const active = activeTab === tab.id;
             return (
@@ -531,14 +603,15 @@ function AdminDashboardInner() {
                 key={tab.id}
                 type="button"
                 onClick={() => handleTabChange(tab.id)}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs md:text-sm font-bold whitespace-nowrap transition-all ${
+                className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-2 rounded-xl text-[11px] sm:text-xs md:text-sm font-bold whitespace-nowrap transition-all shrink-0 ${
                   active
                     ? "bg-emerald-600 text-white shadow-sm shadow-emerald-600/30"
                     : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60"
                 }`}
               >
-                <tab.icon className="h-4 w-4" />
-                <span>{tab.label}</span>
+                <tab.icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                <span className="sm:hidden">{tab.short}</span>
+                <span className="hidden sm:inline">{tab.label}</span>
                 {tab.badge && (
                   <span className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
                 )}
@@ -549,7 +622,7 @@ function AdminDashboardInner() {
       </div>
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-8 space-y-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-4 md:p-8 space-y-4 sm:space-y-6 pb-8">
         {/* ============================================================
             TAB 1: SALES & DAY AUDITOR
         ============================================================ */}
@@ -1369,6 +1442,177 @@ function AdminDashboardInner() {
                   <Save className="h-4 w-4" /> Save Venue Details
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ============================================================
+            TAB 6: STAFF NAMES & PINs
+        ============================================================ */}
+        {activeTab === "staff" && (
+          <div className="space-y-4 sm:space-y-6 animate-in fade-in duration-200">
+            <div className="p-4 sm:p-5 rounded-2xl sm:rounded-3xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-slate-900/60 shadow-sm space-y-3">
+              <div>
+                <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
+                  <Users className="h-5 w-5 text-emerald-600" /> Staff names & login PINs
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Set display names and 4+ digit PINs. Only admin can open this page.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                <input
+                  type="text"
+                  placeholder="New staff name"
+                  value={newStaffName}
+                  onChange={(e) => setNewStaffName(e.target.value)}
+                  className="w-full text-sm font-medium px-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                />
+                <select
+                  value={newStaffRole}
+                  onChange={(e) => setNewStaffRole(e.target.value as Role)}
+                  className="w-full text-sm font-medium px-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                >
+                  {STAFF_ROLES.map((role) => (
+                    <option key={role} value={role}>
+                      {role}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  placeholder="PIN (4+ digits)"
+                  value={newStaffPin}
+                  onChange={(e) => setNewStaffPin(e.target.value)}
+                  className="w-full text-sm font-mono font-bold px-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                />
+                <button
+                  type="button"
+                  disabled={saving || !newStaffName.trim() || newStaffPin.trim().length < 4}
+                  onClick={async () => {
+                    await postStaffAction({
+                      action: "add",
+                      name: newStaffName,
+                      role: newStaffRole,
+                      secret: newStaffPin,
+                    });
+                    setNewStaffName("");
+                    setNewStaffPin("");
+                    setNewStaffRole("cashier");
+                  }}
+                  className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold disabled:opacity-50"
+                >
+                  Add staff
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {staffRows.map((row) => {
+                const draft = staffDrafts[row.id] || { name: row.name, role: row.role, pin: "" };
+                return (
+                  <div
+                    key={row.id}
+                    className="p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-slate-900/60 space-y-3"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-bold text-sm text-slate-900 dark:text-white truncate">{row.name}</p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                          #{row.id} · {row.role}
+                          {row.active ? "" : " · inactive"}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={() =>
+                          void postStaffAction({ action: "active", id: row.id, active: !row.active })
+                        }
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold ${
+                          row.active
+                            ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                            : "bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
+                        }`}
+                      >
+                        {row.active ? "Active" : "Off"}
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <input
+                        type="text"
+                        value={draft.name}
+                        onChange={(e) =>
+                          setStaffDrafts((prev) => ({
+                            ...prev,
+                            [row.id]: { ...draft, name: e.target.value },
+                          }))
+                        }
+                        className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+                      />
+                      <select
+                        value={draft.role}
+                        onChange={(e) =>
+                          setStaffDrafts((prev) => ({
+                            ...prev,
+                            [row.id]: { ...draft, role: e.target.value as Role },
+                          }))
+                        }
+                        className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+                      >
+                        {STAFF_ROLES.map((role) => (
+                          <option key={role} value={role}>
+                            {role}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <div className="relative flex-1">
+                        <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                        <input
+                          type="password"
+                          inputMode="numeric"
+                          placeholder="New PIN (leave blank to keep)"
+                          value={draft.pin}
+                          onChange={(e) =>
+                            setStaffDrafts((prev) => ({
+                              ...prev,
+                              [row.id]: { ...draft, pin: e.target.value },
+                            }))
+                          }
+                          className="w-full text-sm font-mono pl-9 pr-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={async () => {
+                          if (draft.name.trim() !== row.name) {
+                            await postStaffAction({ action: "name", id: row.id, name: draft.name });
+                          }
+                          if (draft.role !== row.role) {
+                            await postStaffAction({ action: "role", id: row.id, role: draft.role });
+                          }
+                          if (draft.pin.trim().length >= 4) {
+                            await postStaffAction({ action: "pin", id: row.id, secret: draft.pin });
+                          }
+                        }}
+                        className="sm:w-auto px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold disabled:opacity-50"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+              {staffRows.length === 0 && !loading ? (
+                <p className="text-sm text-slate-500 dark:text-slate-400 text-center py-8">No staff yet.</p>
+              ) : null}
             </div>
           </div>
         )}

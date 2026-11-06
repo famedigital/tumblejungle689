@@ -40,6 +40,7 @@ export type V2BootstrapData = {
   bankPayload: string;
   bankAccount: string;
   payee: string;
+  city?: string;
   menu: MenuItem[];
   visits: VisitView[];
   staff: { id: number; name: string; role: string }[];

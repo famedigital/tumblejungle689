@@ -24,6 +24,7 @@ export async function GET() {
       bankPayload: settings.bankPayload,
       bankAccount: settings.bankAccount,
       payee: settings.payee || "Tumble Jungle",
+      city: settings.city || "Thimphu",
       menu: menu.filter((m) => m.active),
       visits,
       staff: staffRows,

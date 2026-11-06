@@ -12,12 +12,15 @@ export async function POST(req: Request) {
       minutes,
       socksCount = 0,
       method = "cash",
+      journal = "",
+      payBank = "",
       staffName = "Floor Staff",
       deviceLabel = "Mobile Device",
       printWristband = true,
     } = body;
 
     const stationLabel = `${staffName} (${deviceLabel})`;
+    const payMethod = method === "bank_qr" ? "bank_qr" : "cash";
 
     // Create admission visit
     const visit = await createVisit({
@@ -25,7 +28,9 @@ export async function POST(req: Request) {
       name: String(guardianName || "Child").trim(),
       childCount: Number(childCount) || 1,
       minutes: Number(minutes) || 60,
-      method: method,
+      method: payMethod,
+      journal: String(journal || "").trim(),
+      payBank: String(payBank || "").trim(),
       station: stationLabel,
     });
 

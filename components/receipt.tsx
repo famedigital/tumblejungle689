@@ -40,6 +40,8 @@ export function Receipt({
   staffName = "",
   tableNo = "",
   playPaidNote = "",
+  /** Screen-only clone (v2 checkout preview). Real print uses default .print-receipt. */
+  screenOnly = false,
 }: {
   venue: string;
   address: string;
@@ -68,6 +70,7 @@ export function Receipt({
   tableNo?: string;
   /** Prepaid first play — shown as note, not a charge line. */
   playPaidNote?: string;
+  screenOnly?: boolean;
 }) {
   const items = lines.filter((line) => !isCompLine(line.name));
   const discFromLines = lines.filter((line) => isCompLine(line.name)).reduce((sum, line) => sum + line.amount, 0);
@@ -105,7 +108,7 @@ export function Receipt({
         : null;
 
   return (
-    <article className="print-receipt">
+    <article className={screenOnly ? "print-receipt receipt-screen-only" : "print-receipt"}>
       <header className="receipt-head">
         <p className="receipt-kicker">Official receipt</p>
         <h1 className="receipt-venue">{venue}</h1>

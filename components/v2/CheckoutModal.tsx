@@ -6,6 +6,10 @@ import type { VisitView, PayMethod } from "@/lib/types";
 import { buildDynamicEmv } from "@/lib/emv";
 import { buildProfessionalWhatsAppReceipt, openWhatsAppReceipt } from "@/lib/v2/receipt-share";
 import { parseJournal, journalRef } from "@/lib/journal";
+import { formatPhone, formatWhen } from "@/lib/format";
+import { Receipt } from "@/components/receipt";
+import { PrintPortal } from "@/components/print-portal";
+import { thermalPrint } from "@/lib/print-station";
 import QRCode from "qrcode";
 import {
   X,
@@ -19,6 +23,26 @@ import {
   FileCheck2,
   Trash2,
 } from "lucide-react";
+
+type SlipData = {
+  receiptNo: number;
+  amountNu: number;
+  code: string;
+  when: string;
+  phone: string;
+  tableNo: string;
+  lines: { name: string; qty: number; amount: number; paid: boolean }[];
+  cash: number;
+  bank: number;
+  banks: { name: string; ref: string; amount: number }[];
+  payMethod: PayMethod;
+  playPaidNote: string;
+};
+
+function isDesktopTill() {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia("(min-width: 768px)").matches;
+}
 
 export function CheckoutModal({
   visit,
@@ -46,16 +70,14 @@ export function CheckoutModal({
   const [isOcrProcessing, setIsOcrProcessing] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [settledData, setSettledData] = useState<{
-    receiptNo: number;
-    amountNu: number;
-    code: string;
-  } | null>(null);
+  const [settledData, setSettledData] = useState<SlipData | null>(null);
+  const [printBusy, setPrintBusy] = useState(false);
+  const [printMsg, setPrintMsg] = useState("");
+  const autoPrintedRef = useRef(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [currentTime] = useState(() => Date.now());
 
-  // Calculate Overtime & Totals
   const { isOvertime, overtimeNu, diffMin, unpaidPlayNu, unpaidFoodNu, totalDueNu } = useMemo(() => {
     if (!visit) {
       return {
@@ -85,17 +107,12 @@ export function CheckoutModal({
     };
   }, [visit, currentTime, extraPerMinNu]);
 
-  // Generate dynamic Bhutan RMA QR code
   useEffect(() => {
     if (!visit || totalDueNu <= 0 || !bankPayload) return;
 
     let isMounted = true;
     try {
-      const dynamicPayload = buildDynamicEmv(
-        bankPayload,
-        totalDueNu,
-        visit.code
-      );
+      const dynamicPayload = buildDynamicEmv(bankPayload, totalDueNu, visit.code);
 
       if (dynamicPayload) {
         QRCode.toDataURL(dynamicPayload, {
@@ -115,9 +132,32 @@ export function CheckoutModal({
     };
   }, [visit, totalDueNu, bankPayload]);
 
+  const runPrint = async (forceBrowser: boolean) => {
+    setPrintBusy(true);
+    setPrintMsg("");
+    try {
+      const mode = await thermalPrint("receipt", { forceBrowser });
+      setPrintMsg(mode === "browser" ? "Print dialog opened" : "Sent to print agent");
+    } catch (err) {
+      setPrintMsg(err instanceof Error ? err.message : "Print failed");
+    } finally {
+      setPrintBusy(false);
+      window.setTimeout(() => setPrintMsg(""), 4000);
+    }
+  };
+
+  // After settle, open system print dialog on desktop (v1 receipt via PrintPortal).
+  useEffect(() => {
+    if (!settledData || autoPrintedRef.current) return;
+    autoPrintedRef.current = true;
+    const timer = window.setTimeout(() => {
+      void runPrint(isDesktopTill());
+    }, 280);
+    return () => window.clearTimeout(timer);
+  }, [settledData]);
+
   if (!visit) return null;
 
-  // Handle Screenshot OCR upload
   const handleScreenshotChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -127,14 +167,12 @@ export function CheckoutModal({
     setIsOcrProcessing(true);
 
     try {
-      // Dynamic import of Tesseract to keep bundle light
       const { createWorker } = await import("tesseract.js");
       const worker = await createWorker("eng");
       const ret = await worker.recognize(previewUrl);
       const text = ret.data.text;
       await worker.terminate();
 
-      // Extract journal number
       const parsed = parseJournal(text);
       const extractedRef = journalRef(parsed);
       if (extractedRef) {
@@ -149,7 +187,6 @@ export function CheckoutModal({
         }
       }
 
-      // Detect bank
       if (/mbob/i.test(text)) setSelectedBank("mBOB");
       else if (/bdb/i.test(text)) setSelectedBank("BDB");
       else if (/bnb/i.test(text)) setSelectedBank("BNB");
@@ -159,6 +196,47 @@ export function CheckoutModal({
     } finally {
       setIsOcrProcessing(false);
     }
+  };
+
+  const buildSlip = (receiptNo: number): SlipData => {
+    const prepaidPlay = visit.blocks.filter((block) => block.paid);
+    const settlePlay = visit.blocks.filter((block) => !block.paid);
+    const cash = method === "cash" ? totalDueNu : 0;
+    const bank = method === "bank_qr" ? totalDueNu : 0;
+    return {
+      receiptNo,
+      amountNu: totalDueNu,
+      code: visit.code,
+      when: new Date().toISOString(),
+      phone: visit.phone,
+      tableNo: visit.tableNo || "",
+      lines: [
+        ...settlePlay.map((block) => ({
+          name: `Play ${block.minutes} min`,
+          qty: 1,
+          amount: block.amountNu,
+          paid: true,
+        })),
+        ...(isOvertime && overtimeNu > 0
+          ? [{ name: `Extra ${Math.abs(diffMin)} min`, qty: 1, amount: overtimeNu, paid: true }]
+          : []),
+        ...visit.lines
+          .filter((line) => !line.paid)
+          .map((line) => ({
+            name: line.name,
+            qty: line.qty,
+            amount: line.amountNu,
+            paid: true,
+          })),
+      ],
+      cash,
+      bank,
+      banks: bank > 0 ? [{ name: selectedBank, ref: journalInput.trim(), amount: bank }] : [],
+      payMethod: method,
+      playPaidNote: prepaidPlay.length
+        ? `Play pass paid at check-in (${prepaidPlay.map((block) => `${block.minutes} min`).join(", ")})`
+        : "",
+    };
   };
 
   const handleConfirmSettle = async () => {
@@ -176,12 +254,7 @@ export function CheckoutModal({
     setIsSubmitting(false);
 
     if (res.ok) {
-      setSettledData({
-        receiptNo: res.receiptNo || visit.id,
-        amountNu: totalDueNu,
-        code: visit.code,
-      });
-      // Call parent update
+      setSettledData(buildSlip(res.receiptNo || visit.receiptNo || visit.id));
       onSettled();
     } else {
       alert(res.error || "Settlement failed");
@@ -218,61 +291,121 @@ export function CheckoutModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="w-full max-w-sm rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden p-5 text-slate-900 dark:text-slate-100 flex flex-col max-h-[92vh] overflow-y-auto">
-        {/* Settlement Success View */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+      <div
+        className={`w-full rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden p-4 sm:p-5 text-slate-900 dark:text-slate-100 flex flex-col max-h-[92vh] overflow-y-auto ${
+          settledData ? "max-w-3xl" : "max-w-sm"
+        }`}
+      >
         {settledData ? (
-          <div className="py-4 space-y-4 text-center animate-in zoom-in-95 duration-200">
-            <div className="h-16 w-16 mx-auto rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-              <Check className="h-8 w-8 stroke-[3]" />
-            </div>
-
-            <div>
-              <h3 className="font-extrabold text-xl text-slate-900 dark:text-white">
-                Payment Settled!
-              </h3>
+          <div className="space-y-4 animate-in zoom-in-95 duration-200">
+            <div className="text-center">
+              <div className="h-14 w-14 mx-auto rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                <Check className="h-7 w-7 stroke-[3]" />
+              </div>
+              <h3 className="font-extrabold text-xl text-slate-900 dark:text-white mt-3">Payment Settled!</h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Receipt #{settledData.receiptNo} • Nu. {settledData.amountNu} spooled to counter printer
+                Receipt #{settledData.receiptNo} • Nu. {settledData.amountNu}
               </p>
             </div>
 
-            {/* Customer WhatsApp Phone */}
-            <div className="p-3.5 rounded-2xl bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-500/30 space-y-2.5 text-left">
-              <label className="text-xs font-bold text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
-                <MessageCircle className="h-3.5 w-3.5 text-emerald-600" />
-                Customer WhatsApp Phone
-              </label>
-              <input
-                type="tel"
-                maxLength={8}
-                placeholder="17xxxxxx"
-                value={customerPhone}
-                onChange={(e) => setCustomerPhone(e.target.value.replace(/\D/g, "").slice(0, 8))}
-                className="w-full font-mono font-bold text-base px-3 py-2 rounded-xl border border-emerald-400/50 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+              {/* Same v1 Receipt component + CSS used by /receipt and cashier till */}
+              <div className="receipt-preview mx-auto w-full max-w-[280px] overflow-hidden">
+                <Receipt
+                  screenOnly
+                  venue={venueName || "Tumble Jungle"}
+                  address="Changjiji, Thimphu"
+                  when={formatWhen(settledData.when)}
+                  code={settledData.code}
+                  phone={formatPhone(settledData.phone)}
+                  lines={settledData.lines}
+                  total={settledData.amountNu}
+                  cash={settledData.cash}
+                  bank={settledData.bank}
+                  banks={settledData.banks}
+                  number={settledData.receiptNo}
+                  payMethod={settledData.payMethod}
+                  staffName={staff?.staffName || ""}
+                  tableNo={settledData.tableNo}
+                  playPaidNote={settledData.playPaidNote}
+                />
+              </div>
 
-              <button
-                type="button"
-                onClick={handleSendWhatsApp}
-                className="w-full py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/30 active:scale-[0.98] transition-all"
-              >
-                <MessageCircle className="h-4 w-4" />
-                <span>SEND WHATSAPP RECEIPT</span>
-              </button>
+              <div className="space-y-3 no-print">
+                <button
+                  type="button"
+                  disabled={printBusy}
+                  onClick={() => void runPrint(true)}
+                  className="w-full py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 shadow-md active:scale-[0.98] transition-all disabled:opacity-50"
+                >
+                  <Printer className="h-4 w-4" />
+                  <span>{printBusy ? "Printing…" : "PRINT RECEIPT"}</span>
+                </button>
+                {printMsg ? (
+                  <p className="text-[11px] text-center font-medium text-emerald-700 dark:text-emerald-300">{printMsg}</p>
+                ) : (
+                  <p className="text-[11px] text-center text-slate-500 dark:text-slate-400">
+                    Opens the Windows / Chrome print dialog with the till receipt layout.
+                  </p>
+                )}
+
+                <div className="p-3.5 rounded-2xl bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-500/30 space-y-2.5 text-left">
+                  <label className="text-xs font-bold text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
+                    <MessageCircle className="h-3.5 w-3.5 text-emerald-600" />
+                    Customer WhatsApp Phone
+                  </label>
+                  <input
+                    type="tel"
+                    maxLength={8}
+                    placeholder="17xxxxxx"
+                    value={customerPhone}
+                    onChange={(e) => setCustomerPhone(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                    className="w-full font-mono font-bold text-base px-3 py-2 rounded-xl border border-emerald-400/50 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSendWhatsApp}
+                    className="w-full py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/30 active:scale-[0.98] transition-all"
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                    <span>SEND WHATSAPP RECEIPT</span>
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="w-full py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                  Done & Close
+                </button>
+              </div>
             </div>
 
-            <button
-              type="button"
-              onClick={onClose}
-              className="w-full py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            >
-              Done & Close
-            </button>
+            {/* Direct body child so browser print CSS can find it (same as v1 till). */}
+            <PrintPortal>
+              <Receipt
+                venue={venueName || "Tumble Jungle"}
+                address="Changjiji, Thimphu"
+                when={formatWhen(settledData.when)}
+                code={settledData.code}
+                phone={formatPhone(settledData.phone)}
+                lines={settledData.lines}
+                total={settledData.amountNu}
+                cash={settledData.cash}
+                bank={settledData.bank}
+                banks={settledData.banks}
+                number={settledData.receiptNo}
+                payMethod={settledData.payMethod}
+                staffName={staff?.staffName || ""}
+                tableNo={settledData.tableNo}
+                playPaidNote={settledData.playPaidNote}
+              />
+            </PrintPortal>
           </div>
         ) : (
-          /* Normal Settlement Flow */
           <>
-            {/* Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <div>
                 <div className="flex items-center gap-2">
@@ -298,7 +431,6 @@ export function CheckoutModal({
               </button>
             </div>
 
-            {/* Bill Breakdown */}
             <div className="py-2.5 space-y-1.5 text-xs">
               {unpaidPlayNu > 0 && (
                 <div className="flex justify-between text-slate-600 dark:text-slate-400">
@@ -329,7 +461,6 @@ export function CheckoutModal({
               </div>
             </div>
 
-            {/* Payment Method Tabs */}
             <div className="grid grid-cols-2 gap-2 my-2">
               <button
                 type="button"
@@ -358,7 +489,6 @@ export function CheckoutModal({
               </button>
             </div>
 
-            {/* Dynamic RMA QR Code Display on Staff Phone */}
             {method === "bank_qr" && (
               <div className="space-y-3">
                 <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 flex flex-col items-center">
@@ -382,13 +512,10 @@ export function CheckoutModal({
                       </div>
                     </>
                   ) : (
-                    <p className="text-xs text-slate-400 py-4 text-center">
-                      Configure Bank Payload in Admin.
-                    </p>
+                    <p className="text-xs text-slate-400 py-4 text-center">Configure Bank Payload in Admin.</p>
                   )}
                 </div>
 
-                {/* Bank selection chips */}
                 <div>
                   <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-1">
                     Select Customer Bank
@@ -411,7 +538,6 @@ export function CheckoutModal({
                   </div>
                 </div>
 
-                {/* Snap Photo / Upload Screenshot for Journal OCR */}
                 <div className="p-3 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
@@ -436,7 +562,6 @@ export function CheckoutModal({
                     />
                   </div>
 
-                  {/* Thumbnail & OCR status */}
                   {screenshotPreview && (
                     <div className="flex items-center gap-2 p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -469,7 +594,6 @@ export function CheckoutModal({
                     </div>
                   )}
 
-                  {/* Journal Input Field */}
                   <div>
                     <label className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-1">
                       Journal Ref / Transaction Number
@@ -486,7 +610,6 @@ export function CheckoutModal({
               </div>
             )}
 
-            {/* Action Button */}
             <button
               type="button"
               onClick={handleConfirmSettle}

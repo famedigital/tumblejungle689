@@ -1894,6 +1894,27 @@ export async function setStaffSecret(id: number, secret: string) {
   await putSetting("show_credential_hint", "0");
 }
 
+export async function setStaffName(id: number, name: string) {
+  const clean = name.trim();
+  if (!clean) throw new Error("Name is required.");
+  const row = await query().one<{ id: number }>("SELECT id FROM staff WHERE id = ?", [id]);
+  if (!row) throw new Error("Staff not found.");
+  await query().exec("UPDATE staff SET name = ? WHERE id = ?", [clean, id]);
+}
+
+export async function setStaffRole(id: number, role: StaffRow["role"]) {
+  const row = await query().one<{ role: string }>("SELECT role FROM staff WHERE id = ?", [id]);
+  if (!row) throw new Error("Staff not found.");
+  if (row.role === "admin" && role !== "admin") {
+    const admins = await query().one<{ n: number }>(
+      "SELECT COUNT(*) AS n FROM staff WHERE role = 'admin' AND active = 1 AND id != ?",
+      [id],
+    );
+    if (Number(admins?.n ?? 0) === 0) throw new Error("Keep at least one active admin.");
+  }
+  await query().exec("UPDATE staff SET role = ? WHERE id = ?", [role, id]);
+}
+
 export async function setStaffActive(id: number, active: boolean) {
   const row = await query().one<{ role: string }>("SELECT role FROM staff WHERE id = ?", [id]);
   if (!row) throw new Error("Staff not found.");

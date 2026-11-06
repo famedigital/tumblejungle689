@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   CreditCard,
   Banknote,
+  Users,
 } from "lucide-react";
 
 export function AdminHubModal({
@@ -66,6 +67,13 @@ export function AdminHubModal({
       icon: QrCode,
       href: "/v2/admin?tab=settings",
       color: "text-purple-500 bg-purple-500/10",
+    },
+    {
+      title: "Staff Names & PINs",
+      desc: "Set cashier names, roles, and login PINs",
+      icon: Users,
+      href: "/v2/admin?tab=staff",
+      color: "text-rose-500 bg-rose-500/10",
     },
     {
       title: "Customer Display Screen",

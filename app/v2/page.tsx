@@ -16,9 +16,13 @@ import { Users, Clock, Utensils, LayoutDashboard, Plus } from "lucide-react";
 
 export default function V2HandheldPos() {
   const staff = useV2Store((s) => s.staff);
+  const setStaff = useV2Store((s) => s.setStaff);
   const visits = useV2Store((s) => s.visits);
   const bootstrap = useV2Store((s) => s.bootstrap);
   const initRealtime = useV2Store((s) => s.initRealtime);
+  const [sessionIsAdmin, setSessionIsAdmin] = useState(false);
+  // Login session only — device name pick must never unlock Admin Hub / Owner menu.
+  const isAdmin = sessionIsAdmin;
 
   const [activeTab, setActiveTab] = useState<"admit" | "radar" | "order" | "admin">("radar");
   const [isStaffModalOpen, setIsStaffModalOpen] = useState(false);
@@ -34,6 +38,42 @@ export default function V2HandheldPos() {
     const unsub = initRealtime();
     return () => unsub();
   }, [bootstrap, initRealtime]);
+
+  // Sync PIN-login session role into client store (source of truth for Admin menu).
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/auth/me")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!alive) return;
+        const session = data?.session as
+          | { staffId?: number; name?: string; role?: string }
+          | null
+          | undefined;
+        const role = session?.role || "";
+        setSessionIsAdmin(role === "admin");
+        if (session?.name && role) {
+          const current = useV2Store.getState().staff;
+          setStaff({
+            staffId: session.staffId ?? current?.staffId,
+            staffName: session.name,
+            role,
+            deviceLabel: current?.deviceLabel || "Active Station",
+            deviceId: current?.deviceId || "STATION-SYNC",
+          });
+        }
+        if (role && role !== "admin") {
+          setIsAdminHubOpen(false);
+          setActiveTab((tab) => (tab === "admin" ? "radar" : tab));
+        }
+      })
+      .catch(() => {
+        if (alive) setSessionIsAdmin(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [setStaff]);
 
   // Prompt staff setup if not configured
   useEffect(() => {
@@ -51,7 +91,9 @@ export default function V2HandheldPos() {
       <TopBar
         onOpenStaffModal={() => setIsStaffModalOpen(true)}
         onOpenAudit={() => setIsAuditDrawerOpen(true)}
-        onOpenAdmin={() => setIsAdminHubOpen(true)}
+        onOpenAdmin={() => {
+          if (isAdmin) setIsAdminHubOpen(true);
+        }}
       />
 
       {/* Embedded Counter Print & Audio Bridge */}
@@ -142,8 +184,8 @@ export default function V2HandheldPos() {
           />
         )}
 
-        {activeTab === "admin" && (
-          <div className="p-4">
+        {activeTab === "admin" && isAdmin && (
+          <div className="p-3 sm:p-4">
             <AdminHubModal
               isOpen={true}
               onClose={() => setActiveTab("radar")}
@@ -153,8 +195,8 @@ export default function V2HandheldPos() {
       </main>
 
       {/* MOBILE BOTTOM NAVIGATION (< 768px) */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 px-2 py-1.5 transition-colors">
-        <div className="max-w-lg mx-auto grid grid-cols-4 gap-1">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] transition-colors">
+        <div className={`max-w-lg mx-auto grid gap-1 ${isAdmin ? "grid-cols-4" : "grid-cols-3"}`}>
           {/* Radar (Floor View) */}
           <button
             type="button"
@@ -204,15 +246,17 @@ export default function V2HandheldPos() {
             <span className="text-[10px] mt-1">Food / KOT</span>
           </button>
 
-          {/* Admin Hub */}
-          <button
-            type="button"
-            onClick={() => setIsAdminHubOpen(true)}
-            className="flex flex-col items-center justify-center py-1.5 px-1 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-700 font-medium transition-all"
-          >
-            <LayoutDashboard className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-            <span className="text-[10px] mt-1">Admin</span>
-          </button>
+          {/* Admin Hub — admin role only */}
+          {isAdmin ? (
+            <button
+              type="button"
+              onClick={() => setIsAdminHubOpen(true)}
+              className="flex flex-col items-center justify-center py-1.5 px-1 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-700 font-medium transition-all"
+            >
+              <LayoutDashboard className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+              <span className="text-[10px] mt-1">Admin</span>
+            </button>
+          ) : null}
         </div>
       </nav>
 
@@ -236,10 +280,12 @@ export default function V2HandheldPos() {
         onClose={() => setIsAuditDrawerOpen(false)}
       />
 
-      <AdminHubModal
-        isOpen={isAdminHubOpen}
-        onClose={() => setIsAdminHubOpen(false)}
-      />
+      {isAdmin ? (
+        <AdminHubModal
+          isOpen={isAdminHubOpen}
+          onClose={() => setIsAdminHubOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

@@ -23,7 +23,10 @@ interface V2State {
   rates: Rate[];
   extraPerMinNu: number;
   bankPayload: string;
+  bankAccount: string;
   payee: string;
+  city: string;
+  address: string;
   menu: MenuItem[];
   staffList: { id: number; name: string; role: string }[];
   todayNu: number;
@@ -59,6 +62,8 @@ interface V2State {
     socksCount: number;
     socksNu: number;
     method: PayMethod;
+    journal?: string;
+    payBank?: string;
     printWristband: boolean;
   }) => Promise<{ ok: boolean; visit?: VisitView; error?: string }>;
 
@@ -102,7 +107,10 @@ export const useV2Store = create<V2State>((set, get) => ({
   ],
   extraPerMinNu: 10,
   bankPayload: "",
+  bankAccount: "",
   payee: "Tumble Jungle",
+  city: "Thimphu",
+  address: "",
   menu: [],
   staffList: [],
   todayNu: 0,
@@ -168,7 +176,10 @@ export const useV2Store = create<V2State>((set, get) => ({
         rates: data.rates,
         extraPerMinNu: data.extraPerMinNu,
         bankPayload: data.bankPayload,
+        bankAccount: data.bankAccount || "",
         payee: data.payee,
+        city: (data as V2BootstrapData & { city?: string }).city || "Thimphu",
+        address: data.address || "",
         menu: data.menu,
         visits: data.visits,
         staffList: data.staff,
@@ -323,7 +334,7 @@ export const useV2Store = create<V2State>((set, get) => ({
         throw new Error(err.error || "Admission failed");
       }
 
-      const { visit } = await res.json();
+      const { visit, printJob } = await res.json();
 
       // Replace optimistic placeholder with real visit
       set((state) => ({
@@ -336,6 +347,14 @@ export const useV2Store = create<V2State>((set, get) => ({
         event: "visit_created",
         payload: { visit, staffName, deviceLabel },
       });
+
+      if (printJob) {
+        await supabase.channel(REALTIME_CHANNEL).send({
+          type: "broadcast",
+          event: "print_job",
+          payload: printJob,
+        });
+      }
 
       get().addAuditEvent({
         type: "admission",

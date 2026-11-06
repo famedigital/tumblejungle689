@@ -40,17 +40,26 @@ export function StaffDeviceSetupModal({
 
   if (!isOpen) return null;
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!selectedName.trim()) return;
     const matched = staffList.find((s) => s.name === selectedName);
     const deviceId =
       staff?.deviceId ||
       "DEV-" + Math.random().toString(36).substring(2, 8).toUpperCase();
 
+    // Keep login session role — never promote to admin by picking a name.
+    let sessionRole = staff?.role || matched?.role || "cashier";
+    try {
+      const me = await fetch("/api/auth/me").then((r) => r.json());
+      if (me?.session?.role) sessionRole = me.session.role;
+    } catch {
+      /* keep fallback */
+    }
+
     setStaff({
-      staffId: matched?.id,
+      staffId: matched?.id ?? staff?.staffId,
       staffName: selectedName.trim(),
-      role: matched?.role || "floor",
+      role: sessionRole,
       deviceLabel: deviceLabel.trim() || "Staff Handheld",
       deviceId,
     });

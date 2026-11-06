@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getSession } from "@/lib/auth";
 import {
   buildDayReport,
   catalogToday,
@@ -12,6 +13,10 @@ import {
 } from "@/lib/domain";
 
 export async function GET() {
+  const session = await getSession();
+  if (!session || session.role !== "admin") {
+    return NextResponse.json({ error: "Admin only." }, { status: 401 });
+  }
   try {
     const [settings, day, menu, stock, categories, staff, dayReport, catalog, purchases] =
       await Promise.all([

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { LayoutDashboard, Store, Timer } from "lucide-react";
@@ -33,15 +34,40 @@ const PERSONAS: PersonaItem[] = [
   {
     id: "admin",
     label: "Owner",
-    href: "/admin",
+    href: "/v2/admin",
     icon: LayoutDashboard,
-    match: (pathname) => pathname.startsWith("/admin"),
+    match: (pathname) => pathname.startsWith("/admin") || pathname.startsWith("/v2/admin"),
   },
 ];
 
+/**
+ * Bottom persona menu is admin-only.
+ * Cashier / cafe / frontdesk stay on their till flow without office navigation.
+ */
 export function PersonaSwitcher() {
   const pathname = usePathname() ?? "";
   const searchParams = useSearchParams();
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/auth/me")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!alive) return;
+        setIsAdmin(data?.session?.role === "admin");
+        setReady(true);
+      })
+      .catch(() => {
+        if (alive) setReady(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  if (!ready || !isAdmin) return null;
 
   return (
     <nav

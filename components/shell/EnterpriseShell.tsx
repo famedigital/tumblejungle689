@@ -86,7 +86,7 @@ export function EnterpriseShell({
   const showLock = isSensitiveRoute && locked;
 
   return (
-    <div className="tj-canvas flex min-h-dvh flex-col pb-24">
+    <div className="tj-canvas flex min-h-dvh flex-col pb-8 sm:pb-24">
       <HeaderTopBar
         outletLabel={outletLabel}
         activeJumpers={activeJumpers}
@@ -96,6 +96,7 @@ export function EnterpriseShell({
         onLock={isSensitiveRoute ? () => setLocked(true) : undefined}
       />
       <main className="mx-auto w-full max-w-[1600px] flex-1 px-3 py-4 sm:px-4 sm:py-6">{children}</main>
+      {/* Persona / Owner menu — rendered only for admin session inside PersonaSwitcher */}
       <PersonaSwitcherHost />
       <QuickUnlock
         key={showLock ? "locked" : "unlocked"}
