@@ -92,14 +92,6 @@ function browserPrint(mode: PrintMode) {
   window.print();
 }
 
-function notify(message: string) {
-  try {
-    window.alert(message);
-  } catch {
-    /* ignore */
-  }
-}
-
 /**
  * When print station is ON (server or local): queue only — never open the browser print dialog.
  * When OFF: normal window.print().
@@ -121,15 +113,13 @@ export async function thermalPrint(
       browserPrint(mode);
       return "browser";
     }
-    // Station is on (or unknown) but queue failed — never open the Windows/Chrome dialog.
-    notify("Print queue failed. Keep Start Print Agent.bat open, then try again.");
-    return "station";
+    // Station is on but queue failed — never open the Windows/Chrome dialog.
+    throw new Error("Print queue failed. Keep Start Print Agent.bat open on the printer PC.");
   }
 
   const stationLikelyOn = Boolean(readPrintStationConfig(fallback)?.on || fallback?.on);
   if (stationLikelyOn) {
-    notify("Nothing on screen to print yet. Open the receipt, then Print again.");
-    return "station";
+    throw new Error("Nothing on screen to print yet. Open the receipt, then Print again.");
   }
 
   browserPrint(mode);
