@@ -1,0 +1,11 @@
+{
+  "name": "tumble-print-agent",
+  "version": "1.0.0",
+  "private": true,
+  "description": "LAN print bridge: phones on WiFi send slips to the PC that owns the thermal printer.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node --watch server.mjs"
+  }
+}

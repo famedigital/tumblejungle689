@@ -32,6 +32,7 @@ import {
   saveReceipt,
   saveKot,
   saveVenue,
+  savePrintStation,
   saveJournalScan,
   setStaffActive,
   setStaffSecret,
@@ -324,6 +325,17 @@ export async function saveVenueAction(formData: FormData) {
       eatBlurb: text(formData, "eatBlurb"),
     });
     redirect("/admin?section=page&ok=Venue%20page%20saved");
+  });
+}
+
+export async function savePrintStationAction(formData: FormData) {
+  await run("/admin?section=page", undefined, async () => {
+    await requireArea("admin");
+    await savePrintStation({
+      url: text(formData, "printAgentUrl"),
+      token: text(formData, "printAgentToken"),
+    });
+    redirect("/admin?section=page&ok=Print%20station%20saved");
   });
 }
 

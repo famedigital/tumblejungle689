@@ -29,6 +29,8 @@ export type TillBase = {
   scPercent: number;
   gstOn: boolean;
   gstPercent: number;
+  printAgentUrl: string;
+  printAgentToken: string;
   savedAt: string;
 };
 
@@ -71,6 +73,8 @@ export function emptyBase(): TillBase {
     scPercent: 10,
     gstOn: false,
     gstPercent: 5,
+    printAgentUrl: "",
+    printAgentToken: "tumble-print",
     savedAt: "",
   };
 }

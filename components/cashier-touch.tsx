@@ -21,6 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardAction, CardDescription, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { thermalPrint, writePrintStationConfig, type PrintMode } from "@/lib/print-station";
 import {
   Command,
   CommandDialog,
@@ -198,6 +199,19 @@ export function CashierTouch({
   const receiptNote = book.base.receiptNote;
   const receiptThanks = book.base.receiptThanks;
   const receiptRules = book.base.receiptRules;
+  const printAgent = {
+    url: book.base.printAgentUrl || "",
+    token: book.base.printAgentToken || "tumble-print",
+  };
+
+  useEffect(() => {
+    if (!printAgent.url) return;
+    writePrintStationConfig(printAgent);
+  }, [printAgent.url, printAgent.token]);
+
+  function runThermalPrint(mode: PrintMode) {
+    return thermalPrint(mode, printAgent);
+  }
   const staticPayload = staticFromSettings({
     payload: book.base.bankPayload,
     account: book.base.bankAccount,
@@ -628,33 +642,20 @@ export function CashierTouch({
   useEffect(() => {
     if (!printTicket || !qr) return;
     const timer = window.setTimeout(() => {
-      document.body.dataset.print = "ticket";
-      window.print();
+      void runThermalPrint("ticket").finally(() => {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("print");
+        window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+      });
     }, 300);
-    function done() {
-      delete document.body.dataset.print;
-      const url = new URL(window.location.href);
-      url.searchParams.delete("print");
-      window.history.replaceState(null, "", `${url.pathname}${url.search}`);
-    }
-    window.addEventListener("afterprint", done);
-    return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener("afterprint", done);
-    };
+    return () => window.clearTimeout(timer);
   }, [printTicket, qr]);
 
   function printSlip() {
-    document.body.dataset.print = "receipt";
-    const done = () => {
-      delete document.body.dataset.print;
-      window.removeEventListener("afterprint", done);
-    };
-    window.addEventListener("afterprint", done);
     const url = new URL(window.location.href);
     url.searchParams.delete("print");
     window.history.replaceState(null, "", `${url.pathname}?${url.searchParams.toString()}`.replace(/\?$/, ""));
-    window.print();
+    void runThermalPrint("receipt");
   }
 
   useEffect(() => {
@@ -666,14 +667,7 @@ export function CashierTouch({
   useEffect(() => {
     if (!paidSlip) return;
     const timer = window.setTimeout(() => {
-      document.body.dataset.print = "receipt";
-      const done = () => {
-        delete document.body.dataset.print;
-        window.removeEventListener("afterprint", done);
-        setPaidSlip(null);
-      };
-      window.addEventListener("afterprint", done);
-      window.print();
+      void runThermalPrint("receipt").finally(() => setPaidSlip(null));
     }, 80);
     return () => window.clearTimeout(timer);
   }, [paidSlip]);
@@ -1098,22 +1092,14 @@ export function CashierTouch({
     if (sessionStorage.getItem(mark) === "1") return;
     const timer = window.setTimeout(() => {
       sessionStorage.setItem(mark, "1");
-      document.body.dataset.print = "sticker";
-      window.print();
+      void runThermalPrint("sticker").finally(() => {
+        setLocalPack(false);
+        const url = new URL(window.location.href);
+        url.searchParams.delete("print");
+        window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+      });
     }, 400);
-    function done() {
-      delete document.body.dataset.print;
-      setLocalPack(false);
-      const url = new URL(window.location.href);
-      url.searchParams.delete("print");
-      window.history.replaceState(null, "", `${url.pathname}${url.search}`);
-    }
-    window.addEventListener("afterprint", done);
-    return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener("afterprint", done);
-      delete document.body.dataset.print;
-    };
+    return () => window.clearTimeout(timer);
   }, [showPack, qr, visit?.code]);
 
   function reprintQr(code: string) {
@@ -1124,19 +1110,9 @@ export function CashierTouch({
   useEffect(() => {
     if (!reprintFor || visit?.code !== reprintFor || !qr) return;
     const timer = window.setTimeout(() => {
-      document.body.dataset.print = "sticker";
-      window.print();
+      void runThermalPrint("sticker").finally(() => setReprintFor(""));
     }, 80);
-    function done() {
-      delete document.body.dataset.print;
-      window.removeEventListener("afterprint", done);
-      setReprintFor("");
-    }
-    window.addEventListener("afterprint", done);
-    return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener("afterprint", done);
-    };
+    return () => window.clearTimeout(timer);
   }, [reprintFor, visit?.code, qr]);
 
   useEffect(() => {
@@ -1145,15 +1121,10 @@ export function CashierTouch({
     const timer = window.setTimeout(() => {
       if (printedTicket.current === job.id) return;
       printedTicket.current = job.id;
-      document.body.dataset.print = "kot";
-      const done = () => {
-        delete document.body.dataset.print;
-        window.removeEventListener("afterprint", done);
+      void runThermalPrint("kot").finally(() => {
         const next = restTickets.current.shift() ?? null;
         setTicket(next);
-      };
-      window.addEventListener("afterprint", done);
-      window.print();
+      });
     }, 80);
     return () => window.clearTimeout(timer);
   }, [ticket]);
@@ -2513,21 +2484,15 @@ function LineVoid({
 
   useEffect(() => {
     if (!armed) return;
-    document.body.dataset.print = "kot";
     let closed = false;
     const finish = () => {
       if (closed) return;
       closed = true;
-      delete document.body.dataset.print;
       closeRef.current();
     };
-    window.addEventListener("afterprint", finish);
-    const timer = window.setTimeout(finish, 4000);
-    window.print();
-    return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener("afterprint", finish);
-    };
+    void thermalPrint("kot").finally(finish);
+    const timer = window.setTimeout(finish, 8000);
+    return () => window.clearTimeout(timer);
   }, [armed]);
 
   return (
@@ -2652,12 +2617,10 @@ function OrderVoid({
 
   useEffect(() => {
     if (!cancelTicket) return;
-    document.body.dataset.print = "kot";
     let closed = false;
     const finish = () => {
       if (closed) return;
       closed = true;
-      delete document.body.dataset.print;
       const next = restCancels.current.shift() ?? null;
       if (next) {
         setCancelTicket(next);
@@ -2666,13 +2629,9 @@ function OrderVoid({
       setCancelTicket(null);
       closeRef.current();
     };
-    window.addEventListener("afterprint", finish);
-    const timer = window.setTimeout(finish, 4000);
-    window.print();
-    return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener("afterprint", finish);
-    };
+    void thermalPrint("kot").finally(finish);
+    const timer = window.setTimeout(finish, 8000);
+    return () => window.clearTimeout(timer);
   }, [cancelTicket]);
 
   return (

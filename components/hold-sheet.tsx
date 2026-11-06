@@ -312,21 +312,15 @@ function OvertimeGate({
 
   useEffect(() => {
     if (!armed) return;
-    document.body.dataset.print = "kot";
     let closed = false;
     const finish = () => {
       if (closed) return;
       closed = true;
-      delete document.body.dataset.print;
       closeRef.current();
     };
-    window.addEventListener("afterprint", finish);
-    const timer = window.setTimeout(finish, 4000);
-    window.print();
-    return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener("afterprint", finish);
-    };
+    void import("@/lib/print-station").then(({ thermalPrint }) => thermalPrint("kot")).finally(finish);
+    const timer = window.setTimeout(finish, 8000);
+    return () => window.clearTimeout(timer);
   }, [armed]);
 
   async function release(next: "waive" | "delete") {

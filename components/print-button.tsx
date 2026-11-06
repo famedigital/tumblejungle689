@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { thermalPrint } from "@/lib/print-station";
 
 export function PrintButton({
   mode,
@@ -15,8 +16,7 @@ export function PrintButton({
       variant={mode === "ticket" ? "default" : "outline"}
       className="h-11 px-4"
       onClick={() => {
-        document.body.dataset.print = mode;
-        window.print();
+        void thermalPrint(mode);
       }}
     >
       {children}

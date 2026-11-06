@@ -3,19 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { thermalPrint } from "@/lib/print-station";
 
 function printReceipt() {
-  document.body.dataset.print = "receipt";
-  let closed = false;
-  const finish = () => {
-    if (closed) return;
-    closed = true;
-    delete document.body.dataset.print;
-    window.removeEventListener("afterprint", finish);
-  };
-  window.addEventListener("afterprint", finish);
-  window.setTimeout(finish, 4000);
-  window.print();
+  void thermalPrint("receipt");
 }
 
 export function ReceiptActions() {

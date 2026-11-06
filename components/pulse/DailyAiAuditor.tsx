@@ -28,15 +28,7 @@ type Props = {
 };
 
 function printDayReport() {
-  const previous = document.body.dataset.print;
-  document.body.dataset.print = "day";
-  const restore = () => {
-    window.removeEventListener("afterprint", restore);
-    if (previous) document.body.dataset.print = previous;
-    else delete document.body.dataset.print;
-  };
-  window.addEventListener("afterprint", restore);
-  window.print();
+  void import("@/lib/print-station").then(({ thermalPrint }) => thermalPrint("day"));
 }
 
 export function DailyAiAuditor({ summary, venue = "Tumble Jungle", ownerPhone, report }: Props) {

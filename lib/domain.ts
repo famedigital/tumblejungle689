@@ -89,7 +89,14 @@ export async function getSettings(): Promise<Settings> {
     scPercent: readPercent(read("sc_percent"), 10),
     gstOn: read("gst_on") === "1",
     gstPercent: readPercent(read("gst_percent"), 5),
+    printAgentUrl: read("print_agent_url"),
+    printAgentToken: read("print_agent_token") || "tumble-print",
   };
+}
+
+export async function savePrintStation(input: { url: string; token: string }) {
+  await putSetting("print_agent_url", input.url.trim().replace(/\/$/, ""));
+  await putSetting("print_agent_token", input.token.trim() || "tumble-print");
 }
 
 export async function saveCharges(input: { scOn: boolean; scPercent: number; gstOn: boolean; gstPercent: number }) {

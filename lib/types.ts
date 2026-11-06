@@ -34,6 +34,10 @@ export type Settings = {
   scPercent: number;
   gstOn: boolean;
   gstPercent: number;
+  /** LAN print agent base URL, e.g. http://192.168.1.20:7910 */
+  printAgentUrl: string;
+  /** Shared secret for the print agent */
+  printAgentToken: string;
 };
 
 export type MenuItem = {

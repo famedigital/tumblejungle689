@@ -30,13 +30,7 @@ export function StickerSheet({
   const kids = Math.max(0, count);
 
   function printStickers() {
-    document.body.dataset.print = "sticker";
-    const done = () => {
-      delete document.body.dataset.print;
-      window.removeEventListener("afterprint", done);
-    };
-    window.addEventListener("afterprint", done);
-    window.print();
+    void import("@/lib/print-station").then(({ thermalPrint }) => thermalPrint("sticker"));
   }
 
   return (

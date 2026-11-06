@@ -80,6 +80,8 @@ export async function loadTillSnapshot(term?: string): Promise<TillSnapshot> {
     scPercent: settings.scPercent,
     gstOn: settings.gstOn,
     gstPercent: settings.gstPercent,
+    printAgentUrl: settings.printAgentUrl,
+    printAgentToken: settings.printAgentToken,
     savedAt: new Date().toISOString(),
     focus,
   };
