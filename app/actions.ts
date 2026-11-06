@@ -329,13 +329,13 @@ export async function saveVenueAction(formData: FormData) {
 }
 
 export async function savePrintStationAction(formData: FormData) {
-  await run("/admin?section=page", undefined, async () => {
+  await run("/admin/receipt", undefined, async () => {
     await requireArea("admin");
     await savePrintStation({
       url: text(formData, "printAgentUrl"),
       token: text(formData, "printAgentToken"),
     });
-    redirect("/admin?section=page&ok=Print%20station%20saved");
+    redirect("/admin/receipt?ok=Print%20station%20saved");
   });
 }
 

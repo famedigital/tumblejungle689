@@ -1,3 +1,4 @@
+import { PrintStationForm } from "@/components/print-station-form";
 import { ReceiptEditor } from "@/components/receipt-editor";
 import { Flash } from "@/components/flash";
 import { StaffShell } from "@/components/staff-shell";
@@ -16,13 +17,16 @@ export default async function ReceiptDesignPage({
   return (
     <StaffShell role={session.role} name={session.name} title="Receipt" tone="candy" current="receipt">
       <Flash error={query.error} ok={query.ok} />
-      <ReceiptEditor
-        venue={settings.venueName}
-        address={settings.address}
-        note={settings.receiptNote}
-        thanks={settings.receiptThanks}
-        rules={settings.receiptRules}
-      />
+      <div className="grid gap-4">
+        <PrintStationForm url={settings.printAgentUrl} token={settings.printAgentToken} />
+        <ReceiptEditor
+          venue={settings.venueName}
+          address={settings.address}
+          note={settings.receiptNote}
+          thanks={settings.receiptThanks}
+          rules={settings.receiptRules}
+        />
+      </div>
     </StaffShell>
   );
 }

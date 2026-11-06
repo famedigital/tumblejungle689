@@ -17,7 +17,7 @@ const LINKS: { id: StaffSection; href: string; label: string }[] = [
   { id: "products", href: "/admin/products", label: "Products" },
   { id: "stock", href: "/admin/stock", label: "Stock" },
   { id: "bank", href: "/admin/bank", label: "Bank" },
-  { id: "receipt", href: "/admin/receipt", label: "Receipt" },
+  { id: "receipt", href: "/admin/receipt", label: "Receipt / Print" },
   { id: "staff", href: "/admin?section=staff", label: "Staff" },
 ];
 

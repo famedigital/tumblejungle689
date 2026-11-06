@@ -7,7 +7,6 @@ import {
 import { ChargeForm } from "@/components/charge-form";
 import { FloorBoard } from "@/components/floor-board";
 import { Flash } from "@/components/flash";
-import { PrintStationForm } from "@/components/print-station-form";
 import { DailyAiAuditor } from "@/components/pulse/DailyAiAuditor";
 import { StaffShell, type StaffSection } from "@/components/staff-shell";
 import { Button } from "@/components/ui/button";
@@ -81,7 +80,6 @@ export default async function AdminPage({
               Save public page
             </Button>
           </form>
-          <PrintStationForm url={settings.printAgentUrl} token={settings.printAgentToken} />
         </section>
       ) : null}
       {section === "charges" && settings ? (
