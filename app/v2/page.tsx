@@ -12,6 +12,11 @@ import { StaffDeviceSetupModal } from "@/components/v2/StaffDeviceSetupModal";
 import { LiveAuditDrawer } from "@/components/v2/LiveAuditDrawer";
 import { AdminHubModal } from "@/components/v2/AdminHubModal";
 import { CounterPrintBridge } from "@/components/v2/CounterPrintBridge";
+import { RecentDrawer } from "@/components/v2/RecentDrawer";
+import { TimeUpDrawer } from "@/components/v2/TimeUpDrawer";
+import { FindDialog } from "@/components/v2/FindDialog";
+import { ExtendPlayModal } from "@/components/v2/ExtendPlayModal";
+import { DayMeters } from "@/components/v2/DayMeters";
 import { Users, Clock, Utensils, LayoutDashboard, Plus } from "lucide-react";
 
 export default function V2HandheldPos() {
@@ -21,13 +26,16 @@ export default function V2HandheldPos() {
   const bootstrap = useV2Store((s) => s.bootstrap);
   const initRealtime = useV2Store((s) => s.initRealtime);
   const [sessionIsAdmin, setSessionIsAdmin] = useState(false);
-  // Login session only — device name pick must never unlock Admin Hub / Owner menu.
   const isAdmin = sessionIsAdmin;
 
   const [activeTab, setActiveTab] = useState<"admit" | "radar" | "order" | "admin">("radar");
   const [isStaffModalOpen, setIsStaffModalOpen] = useState(false);
   const [isAuditDrawerOpen, setIsAuditDrawerOpen] = useState(false);
   const [isAdminHubOpen, setIsAdminHubOpen] = useState(false);
+  const [isRecentOpen, setIsRecentOpen] = useState(false);
+  const [isTimeUpOpen, setIsTimeUpOpen] = useState(false);
+  const [isFindOpen, setIsFindOpen] = useState(false);
+  const [extendVisit, setExtendVisit] = useState<VisitView | null>(null);
 
   const [selectedVisitForOrder, setSelectedVisitForOrder] = useState<VisitView | null>(null);
   const [selectedVisitForCheckout, setSelectedVisitForCheckout] = useState<VisitView | null>(null);
@@ -39,7 +47,6 @@ export default function V2HandheldPos() {
     return () => unsub();
   }, [bootstrap, initRealtime]);
 
-  // Sync PIN-login session role into client store (source of truth for Admin menu).
   useEffect(() => {
     let alive = true;
     fetch("/api/auth/me")
@@ -75,7 +82,6 @@ export default function V2HandheldPos() {
     };
   }, [setStaff]);
 
-  // Prompt staff setup if not configured
   useEffect(() => {
     if (!staff && typeof window !== "undefined") {
       const timer = setTimeout(() => setIsStaffModalOpen(true), 600);
@@ -83,76 +89,129 @@ export default function V2HandheldPos() {
     }
   }, [staff]);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const typing =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable);
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setIsFindOpen(true);
+        return;
+      }
+      if (e.key === "Escape") {
+        setIsFindOpen(false);
+        setIsRecentOpen(false);
+        setIsTimeUpOpen(false);
+        return;
+      }
+      if (typing) return;
+      if (e.key.toLowerCase() === "r" && !e.ctrlKey && !e.metaKey) setIsRecentOpen(true);
+      if (e.key.toLowerCase() === "t" && !e.ctrlKey && !e.metaKey) setIsTimeUpOpen(true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const activeVisitsCount = visits.filter((v) => v.status === "open").length;
 
+  const floorHandlers = {
+    onSelectForOrder: (v: VisitView) => {
+      setSelectedVisitForOrder(v);
+      setActiveTab("order");
+    },
+    onSelectForCheckout: (v: VisitView) => setSelectedVisitForCheckout(v),
+    onExtend: (v: VisitView) => setExtendVisit(v),
+  };
+
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans select-none antialiased">
-      {/* Top Header Bar */}
+    <div className="h-dvh max-h-dvh md:overflow-hidden overflow-x-hidden bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans select-none antialiased">
       <TopBar
         onOpenStaffModal={() => setIsStaffModalOpen(true)}
         onOpenAudit={() => setIsAuditDrawerOpen(true)}
         onOpenAdmin={() => {
           if (isAdmin) setIsAdminHubOpen(true);
         }}
+        onOpenRecent={() => setIsRecentOpen(true)}
+        onOpenTimeUp={() => setIsTimeUpOpen(true)}
+        onOpenFind={() => setIsFindOpen(true)}
       />
 
-      {/* Embedded Counter Print & Audio Bridge */}
       <CounterPrintBridge />
 
-      {/* DESKTOP PANORAMIC COUNTER STATION (>= 768px / md:) */}
-      <div className="hidden md:flex flex-1 max-w-7xl w-full mx-auto p-4 gap-6 items-start">
-        {/* Left Column: Floor Radar & Admission */}
-        <div className="w-[45%] space-y-4">
-          <div className="flex items-center justify-between px-1">
-            <h2 className="font-extrabold text-lg text-slate-900 dark:text-white flex items-center gap-2">
-              <Clock className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-              <span>Floor Radar ({activeVisitsCount})</span>
+      {/* DESKTOP COUNTER — viewport locked; panes scroll internally */}
+      <div className="hidden md:grid flex-1 min-h-0 max-w-[1680px] w-full mx-auto p-3 lg:p-4 gap-3 lg:gap-4 grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)] overflow-hidden">
+        <section className="min-h-0 flex flex-col gap-2.5 overflow-hidden">
+          <DayMeters />
+
+          <div className="flex items-center justify-between shrink-0 px-0.5">
+            <h2 className="font-bold text-sm lg:text-base text-slate-900 dark:text-white flex items-center gap-2">
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-sky-500/15 text-sky-700 dark:text-sky-300">
+                <Clock className="h-4 w-4" />
+              </span>
+              <span>Floor</span>
+              <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 tabular-nums bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-2 py-0.5 rounded-full">
+                {activeVisitsCount} open
+              </span>
             </h2>
             <button
               type="button"
               onClick={() => setShowDesktopAdmit(!showDesktopAdmit)}
-              className="py-1.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
+              className="py-1.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm active:scale-[0.985]"
             >
               <Plus className="h-4 w-4" />
-              <span>{showDesktopAdmit ? "Close Form" : "New Admission"}</span>
+              <span>{showDesktopAdmit ? "Close" : "Admit"}</span>
             </button>
           </div>
 
-          {showDesktopAdmit && (
-            <div className="rounded-3xl border border-emerald-500/30 bg-emerald-50/20 dark:bg-emerald-950/20 p-2 animate-in fade-in duration-200">
+          {showDesktopAdmit ? (
+            <div className="shrink-0 rounded-2xl border border-emerald-500/25 bg-emerald-50/40 dark:bg-emerald-950/20 overflow-y-auto max-h-[34%]">
               <AdmissionView onSuccess={() => setShowDesktopAdmit(false)} />
             </div>
-          )}
+          ) : null}
 
-          <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/70 backdrop-blur-sm overflow-hidden shadow-sm">
-            <FloorRadar
-              onSelectForOrder={(v) => setSelectedVisitForOrder(v)}
-              onSelectForCheckout={(v) => setSelectedVisitForCheckout(v)}
-            />
+          <div className="min-h-0 flex-1 rounded-2xl border border-sky-200/70 dark:border-sky-900/40 bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
+            <div className="h-full overflow-y-auto overscroll-contain">
+              <FloorRadar {...floorHandlers} />
+            </div>
           </div>
-        </div>
+        </section>
 
-        {/* Right Column: Menu Catalog & KOT Cart */}
-        <div className="w-[55%] space-y-4">
-          <div className="flex items-center justify-between px-1">
-            <h2 className="font-extrabold text-lg text-slate-900 dark:text-white flex items-center gap-2">
-              <Utensils className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-              <span>Food & Drink Orders (KOT / BOT)</span>
+        <section className="min-h-0 flex flex-col gap-2.5 overflow-hidden">
+          <div className="flex items-center justify-between shrink-0 px-0.5">
+            <h2 className="font-bold text-sm lg:text-base text-slate-900 dark:text-white flex items-center gap-2">
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-violet-500/15 text-violet-700 dark:text-violet-300">
+                <Utensils className="h-4 w-4" />
+              </span>
+              <span>Kitchen orders</span>
             </h2>
+            {selectedVisitForOrder ? (
+              <span className="text-xs font-semibold text-violet-800 dark:text-violet-200 bg-violet-500/15 border border-violet-200 dark:border-violet-800 px-2.5 py-1 rounded-full">
+                {selectedVisitForOrder.code}
+              </span>
+            ) : (
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-2.5 py-1 rounded-full">
+                Walk-in ready
+              </span>
+            )}
           </div>
 
-          <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/70 backdrop-blur-sm overflow-hidden shadow-sm">
+          <div className="min-h-0 flex-1 rounded-2xl border border-violet-200/70 dark:border-violet-900/40 bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
             <OrderView
               targetVisit={selectedVisitForOrder}
               onClearTargetVisit={() => setSelectedVisitForOrder(null)}
               onOrderSent={() => setSelectedVisitForOrder(null)}
             />
           </div>
-        </div>
+        </section>
       </div>
 
-      {/* MOBILE THUMB COCKPIT VIEW (< 768px / md:hidden) */}
-      <main className="md:hidden flex-1 pb-20">
+      {/* MOBILE */}
+      <main className="md:hidden flex-1 min-h-0 pb-20 flex flex-col overflow-y-auto overscroll-contain">
         {activeTab === "admit" && (
           <AdmissionView
             onSuccess={() => {
@@ -162,42 +221,36 @@ export default function V2HandheldPos() {
         )}
 
         {activeTab === "radar" && (
-          <FloorRadar
-            onSelectForOrder={(v) => {
-              setSelectedVisitForOrder(v);
-              setActiveTab("order");
-            }}
-            onSelectForCheckout={(v) => {
-              setSelectedVisitForCheckout(v);
-            }}
-          />
+          <>
+            <div className="px-4 pt-3">
+              <DayMeters />
+            </div>
+            <FloorRadar {...floorHandlers} />
+          </>
         )}
 
         {activeTab === "order" && (
-          <OrderView
-            targetVisit={selectedVisitForOrder}
-            onClearTargetVisit={() => setSelectedVisitForOrder(null)}
-            onOrderSent={() => {
-              setSelectedVisitForOrder(null);
-              setActiveTab("radar");
-            }}
-          />
+          <div className="flex-1 min-h-0 h-[calc(100dvh-8.5rem)]">
+            <OrderView
+              targetVisit={selectedVisitForOrder}
+              onClearTargetVisit={() => setSelectedVisitForOrder(null)}
+              onOrderSent={() => {
+                setSelectedVisitForOrder(null);
+                setActiveTab("radar");
+              }}
+            />
+          </div>
         )}
 
         {activeTab === "admin" && isAdmin && (
           <div className="p-3 sm:p-4">
-            <AdminHubModal
-              isOpen={true}
-              onClose={() => setActiveTab("radar")}
-            />
+            <AdminHubModal isOpen={true} onClose={() => setActiveTab("radar")} />
           </div>
         )}
       </main>
 
-      {/* MOBILE BOTTOM NAVIGATION (< 768px) */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] transition-colors">
         <div className={`max-w-lg mx-auto grid gap-1 ${isAdmin ? "grid-cols-4" : "grid-cols-3"}`}>
-          {/* Radar (Floor View) */}
           <button
             type="button"
             onClick={() => setActiveTab("radar")}
@@ -218,7 +271,6 @@ export default function V2HandheldPos() {
             <span className="text-[10px] mt-1">Radar</span>
           </button>
 
-          {/* Admit (Pass & Wristband) */}
           <button
             type="button"
             onClick={() => setActiveTab("admit")}
@@ -232,7 +284,6 @@ export default function V2HandheldPos() {
             <span className="text-[10px] mt-1">Admit</span>
           </button>
 
-          {/* Food / KOT Orders */}
           <button
             type="button"
             onClick={() => setActiveTab("order")}
@@ -246,7 +297,6 @@ export default function V2HandheldPos() {
             <span className="text-[10px] mt-1">Food / KOT</span>
           </button>
 
-          {/* Admin Hub — admin role only */}
           {isAdmin ? (
             <button
               type="button"
@@ -260,11 +310,7 @@ export default function V2HandheldPos() {
         </div>
       </nav>
 
-      {/* Modals & Slide-over Drawers */}
-      <StaffDeviceSetupModal
-        isOpen={isStaffModalOpen}
-        onClose={() => setIsStaffModalOpen(false)}
-      />
+      <StaffDeviceSetupModal isOpen={isStaffModalOpen} onClose={() => setIsStaffModalOpen(false)} />
 
       <CheckoutModal
         visit={selectedVisitForCheckout}
@@ -272,19 +318,40 @@ export default function V2HandheldPos() {
         onSettled={() => {
           setSelectedVisitForCheckout(null);
           setActiveTab("radar");
+          void bootstrap();
         }}
       />
 
-      <LiveAuditDrawer
-        isOpen={isAuditDrawerOpen}
-        onClose={() => setIsAuditDrawerOpen(false)}
+      <LiveAuditDrawer isOpen={isAuditDrawerOpen} onClose={() => setIsAuditDrawerOpen(false)} />
+
+      <RecentDrawer isOpen={isRecentOpen} onClose={() => setIsRecentOpen(false)} />
+
+      <TimeUpDrawer
+        isOpen={isTimeUpOpen}
+        onClose={() => setIsTimeUpOpen(false)}
+        onSettle={(v) => setSelectedVisitForCheckout(v)}
+        onExtend={(v) => setExtendVisit(v)}
+      />
+
+      <FindDialog
+        isOpen={isFindOpen}
+        onClose={() => setIsFindOpen(false)}
+        onOpenVisit={(v) => {
+          setSelectedVisitForOrder(v);
+          setActiveTab("order");
+        }}
+        onSettle={(v) => setSelectedVisitForCheckout(v)}
+      />
+
+      <ExtendPlayModal
+        visit={extendVisit}
+        onClose={() => setExtendVisit(null)}
+        onDone={() => void bootstrap()}
+        onSettle={(v) => setSelectedVisitForCheckout(v)}
       />
 
       {isAdmin ? (
-        <AdminHubModal
-          isOpen={isAdminHubOpen}
-          onClose={() => setIsAdminHubOpen(false)}
-        />
+        <AdminHubModal isOpen={isAdminHubOpen} onClose={() => setIsAdminHubOpen(false)} />
       ) : null}
     </div>
   );

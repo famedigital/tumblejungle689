@@ -756,6 +756,7 @@ export async function searchVisit(term: string): Promise<VisitView | null> {
 }
 
 export type VisitHit = {
+  id: number;
   code: string;
   phone: string;
   status: "open" | "settled";
@@ -786,6 +787,7 @@ export async function searchHits(term: string): Promise<VisitHit[]> {
   );
   const visits = await hydrateMany(rows);
   return visits.map((visit) => ({
+    id: visit.id,
     code: visit.code,
     phone: visit.phone,
     status: visit.status,

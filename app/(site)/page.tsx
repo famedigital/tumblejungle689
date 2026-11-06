@@ -37,16 +37,9 @@ export default async function HomePage() {
   )}`;
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#090d16] text-slate-900 dark:text-slate-100 font-sans selection:bg-emerald-500 selection:text-white">
-      {/* Top Banner & Status */}
-      <div className="w-full bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white text-xs font-bold py-2.5 px-4 text-center tracking-wide flex items-center justify-center gap-2">
-        <span className="h-2 w-2 rounded-full bg-emerald-300 animate-pulse" />
-        <span>OPEN TODAY • 10:00 AM - 8:00 PM • CHANGJIJI, THIMPHU</span>
-        <span className="hidden md:inline">• Accompanying Parents Free</span>
-      </div>
-
-      {/* Hero Section */}
-      <section className="relative overflow-hidden pt-12 pb-16 md:pt-20 md:pb-24 px-4 md:px-8">
+    <div className="min-h-screen bg-[#f7f4ee] text-[#1c2420] font-sans selection:bg-emerald-500 selection:text-white">
+      {/* Hero Section — status ribbon lives in SiteHeader */}
+      <section className="relative overflow-hidden pt-10 pb-16 md:pt-16 md:pb-24 px-4 md:px-8">
         {/* Glow ambient background */}
         <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] bg-emerald-500/10 dark:bg-emerald-500/20 blur-[120px] rounded-full pointer-events-none" />
 

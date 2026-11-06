@@ -1,26 +1,58 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useV2Store } from "@/lib/v2/store";
 import Link from "next/link";
-import { User, Activity, RefreshCw, LayoutDashboard, LogOut } from "lucide-react";
+import {
+  User,
+  Activity,
+  RefreshCw,
+  LayoutDashboard,
+  LogOut,
+  History,
+  AlertTriangle,
+  Search,
+} from "lucide-react";
 
 export function TopBar({
   onOpenStaffModal,
   onOpenAudit,
   onOpenAdmin,
+  onOpenRecent,
+  onOpenTimeUp,
+  onOpenFind,
 }: {
   onOpenStaffModal: () => void;
   onOpenAudit: () => void;
   onOpenAdmin: () => void;
+  onOpenRecent?: () => void;
+  onOpenTimeUp?: () => void;
+  onOpenFind?: () => void;
 }) {
   const staff = useV2Store((s) => s.staff);
   const isConnected = useV2Store((s) => s.isConnected);
   const venueName = useV2Store((s) => s.venueName);
   const auditEvents = useV2Store((s) => s.auditEvents);
+  const visits = useV2Store((s) => s.visits);
   const bootstrap = useV2Store((s) => s.bootstrap);
   const [sessionIsAdmin, setSessionIsAdmin] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
   const isAdmin = sessionIsAdmin;
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 30000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const timeUpCount = useMemo(() => {
+    return visits.filter(
+      (v) =>
+        v.status === "open" &&
+        v.blocks.some((b) => b.paid) &&
+        !String(v.phone || "").startsWith("F") &&
+        new Date(v.paidUntil).getTime() < now,
+    ).length;
+  }, [visits, now]);
 
   useEffect(() => {
     let alive = true;
@@ -107,6 +139,47 @@ export function TopBar({
 
         {/* Right Action Buttons */}
         <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
+          {onOpenFind ? (
+            <button
+              type="button"
+              onClick={onOpenFind}
+              title="Find ticket (Ctrl+K)"
+              className="flex items-center gap-1.5 px-2 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-all"
+            >
+              <Search className="h-3.5 w-3.5" />
+              <span className="hidden lg:inline">Find</span>
+            </button>
+          ) : null}
+
+          {onOpenRecent ? (
+            <button
+              type="button"
+              onClick={onOpenRecent}
+              title="Recent transactions"
+              className="flex items-center gap-1.5 px-2 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-all"
+            >
+              <History className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span className="hidden lg:inline">Recent</span>
+            </button>
+          ) : null}
+
+          {onOpenTimeUp ? (
+            <button
+              type="button"
+              onClick={onOpenTimeUp}
+              title="Time's up queue"
+              className="relative flex items-center gap-1.5 px-2 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-all"
+            >
+              <AlertTriangle className={`h-3.5 w-3.5 ${timeUpCount ? "text-rose-600" : "text-slate-400"}`} />
+              <span className="hidden lg:inline">Time up</span>
+              {timeUpCount > 0 ? (
+                <span className="absolute -top-1 -right-1 h-4 min-w-4 px-1 rounded-full bg-rose-600 text-white text-[9px] font-bold flex items-center justify-center">
+                  {timeUpCount > 99 ? "99+" : timeUpCount}
+                </span>
+              ) : null}
+            </button>
+          ) : null}
+
           {isAdmin ? (
             <button
               type="button"
