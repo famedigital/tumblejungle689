@@ -166,8 +166,8 @@ export default function V2HandheldPos() {
 
           <div className="min-h-0 flex-1 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-sm relative">
             {showDesktopAdmit ? (
-              <div className="absolute inset-0 z-20 bg-white dark:bg-slate-900 till-scroll overflow-y-auto">
-                <div className="sticky top-0 z-10 flex items-center justify-between px-3 py-2 border-b border-slate-100 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur">
+              <div className="absolute inset-0 z-20 bg-white dark:bg-slate-900 flex flex-col overflow-hidden">
+                <div className="shrink-0 flex items-center justify-between px-3 py-1.5 border-b border-slate-100 dark:border-slate-800">
                   <p className="text-xs font-bold text-slate-800 dark:text-slate-100">New admission</p>
                   <button
                     type="button"
@@ -177,7 +177,12 @@ export default function V2HandheldPos() {
                     Back to floor
                   </button>
                 </div>
-                <AdmissionView onSuccess={() => setShowDesktopAdmit(false)} />
+                <div className="min-h-0 flex-1 overflow-hidden">
+                  <AdmissionView
+                    variant="desk"
+                    onSuccess={() => setShowDesktopAdmit(false)}
+                  />
+                </div>
               </div>
             ) : null}
             <div className="till-scroll h-full overflow-y-auto overscroll-contain">
