@@ -71,7 +71,7 @@ export function TopBar({
   }, []);
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-slate-200/80 dark:border-slate-800/80 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md px-3 md:px-6 py-2.5 transition-colors">
+    <header className="sticky top-0 z-40 w-full border-b border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-950/90 backdrop-blur-md px-3 md:px-6 py-2 shadow-sm">
       <div className="flex items-center justify-between max-w-7xl mx-auto">
         {/* Brand & Live Pulse */}
         <div className="flex items-center gap-3 min-w-0">

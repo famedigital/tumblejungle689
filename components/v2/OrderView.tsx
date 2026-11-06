@@ -159,10 +159,8 @@ export function OrderView({
 
   const targetControls = (
     <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
-          Ticket / Table
-        </p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Ticket</p>
         {targetVisit && !clearedTarget ? (
           <button
             type="button"
@@ -178,7 +176,7 @@ export function OrderView({
           </button>
         ) : null}
       </div>
-      <div className="flex flex-wrap gap-1.5">
+      <div className="grid grid-cols-2 gap-1.5">
         <button
           type="button"
           onClick={() => {
@@ -186,13 +184,13 @@ export function OrderView({
             setTableNo("Cafe");
             onClearTargetVisit?.();
           }}
-          className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition-colors ${
+          className={`px-2 py-1.5 rounded-lg text-[11px] font-bold border ${
             !selectedVisitId && tableNo.toLowerCase().includes("cafe")
               ? "border-emerald-500 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
               : "border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
           }`}
         >
-          Walk-in Cafe
+          Cafe
         </button>
         <button
           type="button"
@@ -201,60 +199,56 @@ export function OrderView({
             setTableNo("Restaurant");
             onClearTargetVisit?.();
           }}
-          className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition-colors ${
+          className={`px-2 py-1.5 rounded-lg text-[11px] font-bold border ${
             !selectedVisitId && tableNo.toLowerCase().includes("rest")
               ? "border-emerald-500 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
               : "border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
           }`}
         >
-          Walk-in Restaurant
+          Restaurant
         </button>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        <select
-          value={selectedVisitId ?? ""}
-          onChange={(e) => {
-            const val = e.target.value ? Number(e.target.value) : null;
-            setSelectedVisitId(val);
-            const found = visits.find((v) => v.id === val);
-            if (found?.tableNo) setTableNo(found.tableNo);
-          }}
-          className="w-full text-sm font-medium px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
-        >
-          <option value="">Walk-in / new tab</option>
-          {visits
-            .filter((v) => v.status === "open")
-            .map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.code} · {v.guardianName || "Guest"}
-              </option>
-            ))}
-        </select>
-        <input
-          type="text"
-          placeholder="Table (T-3, Cafe…)"
-          value={tableNo}
-          onChange={(e) => setTableNo(e.target.value)}
-          className="w-full text-sm font-medium px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
-        />
-      </div>
+      <select
+        value={selectedVisitId ?? ""}
+        onChange={(e) => {
+          const val = e.target.value ? Number(e.target.value) : null;
+          setSelectedVisitId(val);
+          const found = visits.find((v) => v.id === val);
+          if (found?.tableNo) setTableNo(found.tableNo);
+        }}
+        className="w-full appearance-none text-sm font-medium pl-3 pr-9 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30 bg-[length:1rem] bg-[right_0.65rem_center] bg-no-repeat"
+        style={{
+          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
+        }}
+      >
+        <option value="">Walk-in</option>
+        {visits
+          .filter((v) => v.status === "open")
+          .map((v) => (
+            <option key={v.id} value={v.id}>
+              {v.code} · {v.guardianName || "Guest"}
+            </option>
+          ))}
+      </select>
       <input
         type="text"
-        placeholder="Kitchen note (optional)"
+        placeholder="Table"
+        value={tableNo}
+        onChange={(e) => setTableNo(e.target.value)}
+        className="w-full text-sm font-medium px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+      />
+      <input
+        type="text"
+        placeholder="Kitchen note"
         value={orderNotes}
         onChange={(e) => setOrderNotes(e.target.value)}
-        className="w-full text-sm px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/70 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+        className="w-full text-sm px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
       />
-      {selectedVisit ? (
-        <p className="text-[11px] text-slate-500 dark:text-slate-400">
-          Sending to <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedVisit.code}</span>
-          {tableNo ? <> · table <span className="font-semibold">{tableNo}</span></> : null}
-        </p>
-      ) : (
-        <p className="text-[11px] text-slate-500 dark:text-slate-400">
-          No pass selected — creates a cafe / restaurant walk-in tab.
-        </p>
-      )}
+      <p className="text-[10px] text-slate-500 truncate">
+        {selectedVisit
+          ? `To ${selectedVisit.code}${tableNo ? ` · ${tableNo}` : ""}`
+          : "Walk-in tab"}
+      </p>
     </div>
   );
 
@@ -263,7 +257,7 @@ export function OrderView({
       type="button"
       onClick={handleSendKot}
       disabled={isSubmitting || cart.length === 0}
-      className="w-full py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-500 text-white shadow-sm active:scale-[0.985] transition-all disabled:opacity-45 disabled:pointer-events-none"
+      className="w-full py-2.5 px-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm active:scale-[0.985] disabled:opacity-45 disabled:pointer-events-none"
     >
       {sentSuccess ? (
         <>
@@ -282,20 +276,16 @@ export function OrderView({
   );
 
   const cartLines = (
-    <ul className="space-y-2 pr-0.5">
+    <ul className="space-y-1.5 pr-0.5">
       {cart.length === 0 ? (
-        <li className="rounded-xl border border-dashed border-violet-200 dark:border-violet-900/50 px-3 py-8 text-center text-xs text-slate-500 dark:text-slate-400">
-          Tap items to build the ticket.
+        <li className="rounded-lg border border-dashed border-slate-200 dark:border-slate-700 px-3 py-6 text-center text-xs text-slate-500">
+          Tap menu items
         </li>
       ) : (
         cart.map((line) => (
           <li
             key={line.item.id}
-            className={`flex items-center gap-2 rounded-xl border px-2.5 py-2 bg-white dark:bg-slate-900 ${
-              (line.item.outlet || "cafe") === "cafe"
-                ? "border-amber-200/80 dark:border-amber-900/50"
-                : "border-violet-200/80 dark:border-violet-900/50"
-            }`}
+            className="flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-800 px-2 py-1.5 bg-white dark:bg-slate-900"
           >
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">{line.item.name}</p>
@@ -328,13 +318,9 @@ export function OrderView({
     <div className="h-full min-h-0 overflow-hidden flex flex-col md:flex-row md:gap-0 relative">
       {/* Fixed viewport toast — never requires scrolling */}
       {toast ? (
-        <div className="pointer-events-none fixed top-16 left-1/2 z-[80] -translate-x-1/2 px-3 w-[min(92vw,28rem)]">
+        <div className="pointer-events-none fixed top-14 left-1/2 z-[80] -translate-x-1/2 px-3 w-[min(92vw,24rem)]">
           <div
-            className={`pointer-events-auto rounded-2xl border px-4 py-3 shadow-xl backdrop-blur-md flex items-center gap-2.5 ${
-              toast.tone === "print"
-                ? "border-violet-300 bg-violet-600 text-white dark:border-violet-500"
-                : "border-emerald-300 bg-emerald-600 text-white dark:border-emerald-500"
-            }`}
+            className="pointer-events-auto rounded-xl border border-emerald-500/40 bg-emerald-600 text-white px-3 py-2.5 shadow-lg flex items-center gap-2"
             role="status"
           >
             <Check className="h-4 w-4 shrink-0" />
@@ -355,19 +341,19 @@ export function OrderView({
               placeholder="Search menu…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/40 text-slate-900 dark:text-white"
+              className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30 text-slate-900 dark:text-white"
             />
           </div>
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+          <div className="till-scroll flex items-center gap-1 overflow-x-auto pb-0.5">
             {categories.map((cat) => (
               <button
                 key={cat}
                 type="button"
                 onClick={() => setSelectedCategory(cat)}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap capitalize transition-colors ${
+                className={`px-2.5 py-1 rounded-md text-xs font-semibold whitespace-nowrap capitalize ${
                   selectedCategory === cat
-                    ? "bg-violet-600 text-white"
-                    : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-700"
+                    ? "bg-emerald-600 text-white"
+                    : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
                 }`}
               >
                 {cat}
@@ -376,54 +362,32 @@ export function OrderView({
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-28 md:pb-3">
-          <div className="grid grid-cols-2 xl:grid-cols-3 gap-2 sm:gap-2.5">
+        <div className="till-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain pb-28 md:pb-2">
+          <div className="grid grid-cols-2 xl:grid-cols-3 gap-2">
             {filteredMenu.map((item) => {
               const inCart = cart.find((c) => c.item.id === item.id);
-              const isCafe = (item.outlet || "cafe") === "cafe";
               return (
                 <button
                   key={item.id}
                   type="button"
                   onClick={() => addToCart(item, 1)}
-                  className={`text-left rounded-2xl border p-3 transition-all active:scale-[0.985] ${
+                  className={`text-left rounded-lg border p-2.5 transition active:scale-[0.985] hover:-translate-y-0.5 hover:shadow-md ${
                     inCart
-                      ? isCafe
-                        ? "bg-amber-50 dark:bg-amber-950/30 border-amber-400/50 ring-1 ring-amber-500/25 shadow-[inset_3px_0_0_0_rgb(245,158,11)]"
-                        : "bg-violet-50 dark:bg-violet-950/30 border-violet-400/50 ring-1 ring-violet-500/25 shadow-[inset_3px_0_0_0_rgb(139,92,246)]"
-                      : isCafe
-                        ? "bg-gradient-to-br from-amber-50/80 to-white dark:from-amber-950/20 dark:to-slate-900 border-amber-200/70 dark:border-amber-900/40 hover:border-amber-400/50 hover:shadow-sm"
-                        : "bg-gradient-to-br from-violet-50/80 to-white dark:from-violet-950/20 dark:to-slate-900 border-violet-200/70 dark:border-violet-900/40 hover:border-violet-400/50 hover:shadow-sm"
+                      ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30 shadow-sm"
+                      : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300"
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p
-                        className={`text-[9px] font-bold uppercase tracking-wider mb-0.5 ${
-                          isCafe ? "text-amber-700 dark:text-amber-400" : "text-violet-700 dark:text-violet-400"
-                        }`}
-                      >
-                        {isCafe ? "Cafe" : "Restaurant"}
-                      </p>
-                      <h3 className="font-semibold text-sm text-slate-900 dark:text-white line-clamp-2 leading-snug">
-                        {item.name}
-                      </h3>
-                    </div>
+                  <div className="flex items-start justify-between gap-1">
+                    <h3 className="font-semibold text-sm text-slate-900 dark:text-white line-clamp-2 leading-snug">
+                      {item.name}
+                    </h3>
                     {inCart ? (
-                      <span
-                        className={`shrink-0 h-6 min-w-6 px-1.5 rounded-full text-white text-[11px] font-bold flex items-center justify-center ${
-                          isCafe ? "bg-amber-500" : "bg-violet-600"
-                        }`}
-                      >
+                      <span className="shrink-0 h-5 min-w-5 px-1 rounded-full bg-emerald-600 text-white text-[10px] font-bold flex items-center justify-center">
                         {inCart.qty}
                       </span>
                     ) : null}
                   </div>
-                  <p
-                    className={`mt-2 text-sm font-mono font-bold ${
-                      isCafe ? "text-amber-800 dark:text-amber-300" : "text-violet-800 dark:text-violet-300"
-                    }`}
-                  >
+                  <p className="mt-1.5 text-sm font-mono font-bold text-slate-800 dark:text-slate-100">
                     Nu. {item.priceNu}
                   </p>
                 </button>
@@ -436,33 +400,26 @@ export function OrderView({
         </div>
       </div>
 
-      {/* Desktop ticket rail — fixed height, cart scrolls inside */}
-      <aside className="hidden md:flex w-[280px] xl:w-[300px] shrink-0 flex-col border-l border-violet-200/60 dark:border-violet-900/40 bg-gradient-to-b from-violet-50/50 to-slate-50/80 dark:from-violet-950/20 dark:to-slate-950/40 p-4 gap-3 min-h-0 overflow-hidden">
-        <div className="shrink-0 space-y-3">
+      <aside className="hidden md:flex w-[260px] xl:w-[280px] shrink-0 flex-col border-l border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 p-3 gap-2.5 min-h-0 overflow-hidden">
+        <div className="shrink-0 space-y-2">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-violet-700 dark:text-violet-400">
-              Order ticket
-            </p>
-            <p className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-white">
-              {cartTotalQty} item{cartTotalQty === 1 ? "" : "s"} · Nu. {cartTotalNu}
+            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Ticket</p>
+            <p className="text-sm font-semibold text-slate-900 dark:text-white">
+              {cartTotalQty} · Nu. {cartTotalNu}
             </p>
           </div>
           {targetControls}
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{cartLines}</div>
+        <div className="till-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain">{cartLines}</div>
 
-        <div className="shrink-0 space-y-2 pt-1 border-t border-violet-200/70 dark:border-violet-900/50">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-slate-500 dark:text-slate-400">Total</span>
-            <span className="font-mono font-bold text-slate-900 dark:text-white">Nu. {cartTotalNu}</span>
-          </div>
+        <div className="shrink-0 space-y-2 pt-2 border-t border-slate-200 dark:border-slate-800">
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={clearCart}
               disabled={cart.length === 0}
-              className="h-11 w-11 shrink-0 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-rose-600 hover:border-rose-300 disabled:opacity-40 flex items-center justify-center"
+              className="h-10 w-10 shrink-0 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-500 hover:text-rose-600 disabled:opacity-40 flex items-center justify-center"
               title="Clear"
             >
               <Trash2 className="h-4 w-4" />
@@ -473,11 +430,11 @@ export function OrderView({
       </aside>
 
       {cart.length > 0 ? (
-        <div className="md:hidden sticky bottom-0 z-20 -mx-0 mt-auto border-t border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] space-y-2">
+        <div className="md:hidden sticky bottom-0 z-20 mt-auto border-t border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] space-y-2">
           <div className="flex items-center justify-between text-xs">
             <span className="text-slate-500 font-medium">{cartTotalQty} selected</span>
             <div className="flex items-center gap-3">
-              <span className="text-base font-black font-mono text-violet-700 dark:text-violet-400">
+              <span className="text-base font-black font-mono text-emerald-700 dark:text-emerald-400">
                 Nu. {cartTotalNu}
               </span>
               <button type="button" onClick={clearCart} className="p-1 text-slate-400 hover:text-rose-500">

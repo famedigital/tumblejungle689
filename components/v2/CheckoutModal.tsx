@@ -293,8 +293,10 @@ export function CheckoutModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
       <div
-        className={`w-full rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden p-4 sm:p-5 text-slate-900 dark:text-slate-100 flex flex-col max-h-[92vh] overflow-y-auto ${
-          settledData ? "max-w-3xl" : "max-w-sm"
+        className={`w-full rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl text-slate-900 dark:text-slate-100 flex flex-col ${
+          settledData
+            ? "max-w-3xl max-h-[92dvh] overflow-y-auto till-scroll p-4 sm:p-5"
+            : "max-w-sm md:max-w-3xl max-h-[min(92dvh,720px)] overflow-hidden p-3 sm:p-4"
         }`}
       >
         {settledData ? (
@@ -405,227 +407,220 @@ export function CheckoutModal({
             </PrintPortal>
           </div>
         ) : (
-          <>
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-              <div>
+          <div className="flex flex-col min-h-0 flex-1 overflow-hidden">
+            <div className="flex items-center justify-between shrink-0 pb-2 border-b border-slate-100 dark:border-slate-800">
+              <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="font-mono font-extrabold text-base text-slate-900 dark:text-white">
+                  <span className="font-mono font-extrabold text-sm text-slate-900 dark:text-white">
                     {visit.code}
                   </span>
-                  {visit.tableNo && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                  {visit.tableNo ? (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
                       {visit.tableNo}
                     </span>
-                  )}
+                  ) : null}
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {visit.guardianName || "Child"} • {visit.phone}
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                  {visit.guardianName || "Guest"} · {visit.phone}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={onClose}
-                className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+                className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"
+                aria-label="Close"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="py-2.5 space-y-1.5 text-xs">
-              {unpaidPlayNu > 0 && (
-                <div className="flex justify-between text-slate-600 dark:text-slate-400">
-                  <span>Play Admission</span>
-                  <span className="font-mono font-semibold">Nu. {unpaidPlayNu}</span>
-                </div>
-              )}
-
-              {unpaidFoodNu > 0 && (
-                <div className="flex justify-between text-slate-600 dark:text-slate-400">
-                  <span>Food & Drink Tab ({visit.lines.length} items)</span>
-                  <span className="font-mono font-semibold">Nu. {unpaidFoodNu}</span>
-                </div>
-              )}
-
-              {isOvertime && (
-                <div className="flex justify-between text-rose-600 dark:text-rose-400 font-medium">
-                  <span>Overtime (+{Math.abs(diffMin)} min)</span>
-                  <span className="font-mono font-semibold">Nu. {overtimeNu}</span>
-                </div>
-              )}
-
-              <div className="flex justify-between items-center pt-2 border-t border-slate-200 dark:border-slate-800 text-sm">
-                <span className="font-bold text-slate-900 dark:text-white">Total Amount Due</span>
-                <span className="font-mono font-black text-xl text-emerald-600 dark:text-emerald-400">
-                  Nu. {totalDueNu}
-                </span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 my-2">
-              <button
-                type="button"
-                onClick={() => setMethod("bank_qr")}
-                className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
-                  method === "bank_qr"
-                    ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 text-emerald-800 dark:text-emerald-300 ring-2 ring-emerald-500/20"
-                    : "bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300"
-                }`}
-              >
-                <QrCode className="h-4 w-4" />
-                <span>Bank QR (Scan)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setMethod("cash")}
-                className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
-                  method === "cash"
-                    ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 text-emerald-800 dark:text-emerald-300 ring-2 ring-emerald-500/20"
-                    : "bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300"
-                }`}
-              >
-                <Banknote className="h-4 w-4" />
-                <span>Cash</span>
-              </button>
-            </div>
-
-            {method === "bank_qr" && (
-              <div className="space-y-3">
-                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 flex flex-col items-center">
-                  {qrDataUrl ? (
+            <div className="min-h-0 flex-1 grid grid-cols-1 md:grid-cols-[minmax(220px,0.9fr)_1.2fr] gap-3 md:gap-4 pt-3 overflow-hidden">
+              {/* LEFT — QR or cash cue */}
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 p-3 flex flex-col items-center justify-center min-h-0">
+                {method === "bank_qr" ? (
+                  qrDataUrl ? (
                     <>
-                      <div className="bg-white p-2.5 rounded-2xl shadow-inner border border-slate-200">
+                      <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-sm">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={qrDataUrl}
                           alt="Bhutan RMA Dynamic QR"
-                          className="w-40 h-40 object-contain"
+                          className="w-[168px] h-[168px] md:w-[180px] md:h-[180px] object-contain"
                         />
                       </div>
-                      <div className="mt-1.5 text-center">
-                        <p className="text-[11px] font-bold text-slate-800 dark:text-slate-200">
-                          Parent scans with mBOB / BDB / DrukPay
-                        </p>
-                        <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
-                          Payee: {payee} • Nu. {totalDueNu}
-                        </p>
-                      </div>
+                      <p className="mt-2 text-[11px] font-semibold text-center text-slate-700 dark:text-slate-300">
+                        Scan with mBOB / BDB / DrukPay
+                      </p>
+                      <p className="text-[10px] font-mono text-slate-500 text-center">
+                        {payee} · Nu. {totalDueNu}
+                      </p>
                     </>
                   ) : (
-                    <p className="text-xs text-slate-400 py-4 text-center">Configure Bank Payload in Admin.</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-1">
-                    Select Customer Bank
-                  </label>
-                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-                    {["mBOB", "BDB", "BNB", "Druk PNB", "T-Bank"].map((b) => (
-                      <button
-                        key={b}
-                        type="button"
-                        onClick={() => setSelectedBank(b)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap border transition-all ${
-                          selectedBank === b
-                            ? "bg-emerald-600 text-white border-emerald-600"
-                            : "bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300"
-                        }`}
-                      >
-                        {b}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="p-3 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                      <FileCheck2 className="h-3.5 w-3.5 text-emerald-600" />
-                      Bank Verification
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 text-xs font-bold flex items-center gap-1 transition-colors"
-                    >
-                      <Camera className="h-3.5 w-3.5" />
-                      <span>Snap / Upload Screenshot</span>
-                    </button>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={handleScreenshotChange}
-                      className="hidden"
-                    />
-                  </div>
-
-                  {screenshotPreview && (
-                    <div className="flex items-center gap-2 p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={screenshotPreview}
-                        alt="Screenshot preview"
-                        className="h-10 w-10 object-cover rounded-lg border"
-                      />
-                      <div className="flex-1 text-[11px]">
-                        {isOcrProcessing ? (
-                          <span className="text-amber-500 font-medium flex items-center gap-1">
-                            <Sparkles className="h-3 w-3 animate-spin" /> Scanning Journal No...
-                          </span>
-                        ) : (
-                          <span className="text-emerald-600 dark:text-emerald-400 font-medium">
-                            Screenshot verified
-                          </span>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setScreenshotPreview(null);
-                          setJournalInput("");
-                        }}
-                        className="text-slate-400 hover:text-rose-500 p-1"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                    <p className="text-xs text-slate-400 text-center px-2">Configure bank payload in Admin.</p>
+                  )
+                ) : (
+                  <div className="text-center space-y-2 py-4">
+                    <div className="mx-auto h-14 w-14 rounded-2xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 flex items-center justify-center">
+                      <Banknote className="h-7 w-7" />
                     </div>
-                  )}
+                    <p className="text-sm font-bold text-slate-900 dark:text-white">Cash tender</p>
+                    <p className="font-mono text-2xl font-black text-emerald-600 dark:text-emerald-400">
+                      Nu. {totalDueNu}
+                    </p>
+                    <p className="text-[11px] text-slate-500">Collect and confirm below.</p>
+                  </div>
+                )}
+              </div>
 
-                  <div>
-                    <label className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-1">
-                      Journal Ref / Transaction Number
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. 126-1234567 or 892341"
-                      value={journalInput}
-                      onChange={(e) => setJournalInput(e.target.value)}
-                      className="w-full font-mono font-semibold text-xs px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white"
-                    />
+              {/* RIGHT — bill + method + bank + journal + confirm */}
+              <div className="min-h-0 flex flex-col gap-2.5 overflow-hidden">
+                <div className="shrink-0 space-y-1 text-xs">
+                  {unpaidPlayNu > 0 ? (
+                    <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                      <span>Play</span>
+                      <span className="font-mono font-semibold">Nu. {unpaidPlayNu}</span>
+                    </div>
+                  ) : null}
+                  {unpaidFoodNu > 0 ? (
+                    <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                      <span>Food ({visit.lines.length})</span>
+                      <span className="font-mono font-semibold">Nu. {unpaidFoodNu}</span>
+                    </div>
+                  ) : null}
+                  {isOvertime ? (
+                    <div className="flex justify-between text-rose-600 dark:text-rose-400 font-medium">
+                      <span>Overtime (+{Math.abs(diffMin)}m)</span>
+                      <span className="font-mono font-semibold">Nu. {overtimeNu}</span>
+                    </div>
+                  ) : null}
+                  <div className="flex justify-between items-baseline pt-1.5 border-t border-slate-200 dark:border-slate-800">
+                    <span className="text-sm font-bold text-slate-900 dark:text-white">Due</span>
+                    <span className="font-mono font-black text-lg text-emerald-600 dark:text-emerald-400">
+                      Nu. {totalDueNu}
+                    </span>
                   </div>
                 </div>
-              </div>
-            )}
 
-            <button
-              type="button"
-              onClick={handleConfirmSettle}
-              disabled={isSubmitting}
-              className="mt-3 w-full py-3.5 px-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/30 active:scale-[0.98] transition-all disabled:opacity-50"
-            >
-              {isSubmitting ? (
-                <Sparkles className="h-4 w-4 animate-spin" />
-              ) : (
-                <>
-                  <Printer className="h-4 w-4" />
-                  <span>CONFIRM PAYMENT & PRINT RECEIPT</span>
-                </>
-              )}
-            </button>
-          </>
+                <div className="shrink-0 grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setMethod("bank_qr")}
+                    className={`py-2 px-2 rounded-lg border text-xs font-bold flex items-center justify-center gap-1.5 ${
+                      method === "bank_qr"
+                        ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 text-emerald-800 dark:text-emerald-300"
+                        : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300"
+                    }`}
+                  >
+                    <QrCode className="h-3.5 w-3.5" /> Bank QR
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMethod("cash")}
+                    className={`py-2 px-2 rounded-lg border text-xs font-bold flex items-center justify-center gap-1.5 ${
+                      method === "cash"
+                        ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 text-emerald-800 dark:text-emerald-300"
+                        : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300"
+                    }`}
+                  >
+                    <Banknote className="h-3.5 w-3.5" /> Cash
+                  </button>
+                </div>
+
+                {method === "bank_qr" ? (
+                  <div className="min-h-0 flex-1 till-scroll overflow-y-auto space-y-2 pr-0.5">
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Bank</p>
+                      <div className="flex flex-wrap gap-1">
+                        {["mBOB", "BDB", "BNB", "Druk PNB", "T-Bank"].map((b) => (
+                          <button
+                            key={b}
+                            type="button"
+                            onClick={() => setSelectedBank(b)}
+                            className={`px-2 py-1 rounded-md text-[11px] font-semibold border ${
+                              selectedBank === b
+                                ? "bg-emerald-600 text-white border-emerald-600"
+                                : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300"
+                            }`}
+                          >
+                            {b}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/40 p-2 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                          <FileCheck2 className="h-3.5 w-3.5 text-emerald-600" /> Verify
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold flex items-center gap-1"
+                        >
+                          <Camera className="h-3.5 w-3.5" /> Screenshot
+                        </button>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          onChange={handleScreenshotChange}
+                          className="hidden"
+                        />
+                      </div>
+                      {screenshotPreview ? (
+                        <div className="flex items-center gap-2">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={screenshotPreview} alt="" className="h-8 w-8 object-cover rounded border" />
+                          <span className="flex-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                            {isOcrProcessing ? "Scanning…" : "Attached"}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setScreenshotPreview(null);
+                              setJournalInput("");
+                            }}
+                            className="text-slate-400 hover:text-rose-500 p-1"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ) : null}
+                      <input
+                        type="text"
+                        placeholder="Journal / txn ref"
+                        value={journalInput}
+                        onChange={(e) => setJournalInput(e.target.value)}
+                        className="w-full font-mono text-xs px-2.5 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 text-slate-900 dark:text-white"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 flex-1">
+                    Confirm once cash is in the drawer.
+                  </p>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleConfirmSettle}
+                  disabled={isSubmitting}
+                  className="shrink-0 w-full py-3 px-3 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/25 active:scale-[0.985] disabled:opacity-50"
+                >
+                  {isSubmitting ? (
+                    <Sparkles className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Printer className="h-4 w-4" />
+                      Confirm & print
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

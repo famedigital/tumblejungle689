@@ -167,6 +167,82 @@
     font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
   }
 }
+
+/* Soft glass elevation + tactile physics (no 3D tilt) */
+.till-ui {
+  --till-shadow: 0 4px 16px -6px rgba(15, 23, 42, 0.12), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --till-shadow-lift: 0 12px 28px -10px rgba(15, 23, 42, 0.18), 0 4px 8px -4px rgba(15, 23, 42, 0.08);
+  --till-shadow-deep: 0 18px 40px -16px rgba(15, 23, 42, 0.22), 0 8px 16px -8px rgba(15, 23, 42, 0.1);
+}
+/* Scroll still works; chrome scrollbar hidden (staff already know to scroll) */
+.till-ui .till-scroll,
+.till-ui .till-scroll * {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.till-ui .till-scroll::-webkit-scrollbar,
+.till-ui .till-scroll *::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+  background: transparent;
+}
+.till-ui .till-panel {
+  box-shadow: var(--till-shadow);
+  backdrop-filter: blur(16px);
+  transition: box-shadow 200ms ease, transform 200ms ease, border-color 200ms ease;
+}
+.till-ui .till-lift {
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 180ms ease, border-color 180ms ease, background-color 180ms ease;
+  will-change: transform;
+}
+.till-ui .till-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--till-shadow-lift);
+}
+.till-ui .till-lift:active {
+  transform: translateY(0) scale(0.985);
+  box-shadow: var(--till-shadow);
+}
+.till-ui .till-press {
+  transition: transform 140ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 140ms ease, filter 140ms ease;
+}
+.till-ui .till-press:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.03);
+}
+.till-ui .till-press:active {
+  transform: scale(0.985);
+}
+@keyframes till-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.till-ui .till-rise {
+  animation: till-rise 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .till-ui .till-lift,
+  .till-ui .till-press,
+  .till-ui .till-panel {
+    transition: none !important;
+  }
+  .till-ui .till-lift:hover,
+  .till-ui .till-lift:active,
+  .till-ui .till-press:hover,
+  .till-ui .till-press:active {
+    transform: none !important;
+  }
+  .till-ui .till-rise {
+    animation: none !important;
+  }
+}
 .till-secret {
   -webkit-text-security: disc;
   text-security: disc;

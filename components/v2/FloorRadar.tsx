@@ -12,11 +12,8 @@ import { forceLocalPrintDialog } from "@/lib/v2/print-local";
 import {
   Clock,
   Search,
-  AlertCircle,
   Utensils,
   QrCode,
-  User,
-  Phone,
   CheckCircle2,
   Timer,
   Pause,
@@ -122,201 +119,160 @@ export function FloorRadar({
   };
 
   return (
-    <div className="max-w-lg md:max-w-none mx-auto p-3 md:p-4 space-y-3">
-      <div className="sticky top-0 z-10 -mx-3 md:-mx-4 px-3 md:px-4 pt-0.5 pb-2 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm space-y-2">
+    <div className="p-3 md:p-4 space-y-3">
+      <div className="sticky top-0 z-10 -mx-3 md:-mx-4 px-3 md:px-4 py-2 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-100 dark:border-slate-800">
         <div className="relative">
-          <Search className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
           <input
-            type="text"
-            placeholder="Search by code, name, phone, table..."
+            type="search"
+            placeholder="Find pass, name, phone, table"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 shadow-sm text-slate-900 dark:text-white"
+            className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
           />
         </div>
-        <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide">
-          <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">Playing</span>
-          <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300">≤10m</span>
-          <span className="px-2 py-0.5 rounded-md bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">Over</span>
-          <span className="px-2 py-0.5 rounded-md bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300">Walk-in</span>
-          <span className="ml-auto normal-case tracking-normal font-semibold text-slate-500">
-            {filteredVisits.length} shown
-          </span>
-        </div>
+        <p className="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+          {filteredVisits.length} open on floor
+        </p>
       </div>
 
-      <div className="space-y-2.5">
+      <div className="space-y-2">
         {filteredVisits.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-800 p-8 text-center bg-slate-50/80 dark:bg-slate-950/50">
-            <CheckCircle2 className="h-10 w-10 text-slate-400 mx-auto mb-2 opacity-50" />
-            <p className="font-semibold text-slate-700 dark:text-slate-300 text-sm">No active guests found</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              Tap &quot;Admit&quot; to issue a wristband pass.
-            </p>
+          <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 p-10 text-center">
+            <CheckCircle2 className="h-8 w-8 text-slate-300 mx-auto mb-2" />
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Floor is clear</p>
+            <p className="text-xs text-slate-500 mt-1">Admit a pass to start.</p>
           </div>
         ) : (
           filteredVisits.map((visit) => {
-            const paidUntilMs = new Date(visit.paidUntil).getTime();
-            const diffMin = Math.round((paidUntilMs - now) / 60000);
+            const diffMin = Math.round((new Date(visit.paidUntil).getTime() - now) / 60000);
             const isOvertime = isPlayVisit(visit) && diffMin < 0;
             const isEndingSoon = isPlayVisit(visit) && diffMin >= 0 && diffMin <= 10;
             const overtimeNu = isOvertime ? Math.abs(diffMin) * (extraPerMinNu || 10) : 0;
             const leaveOk = canLeaveOnTime(visit, now);
             const dropOk = canFloorDrop(visit, now);
             const playOk = isPlayVisit(visit);
-            const tone = isOvertime
-              ? "over"
+
+            const edge = isOvertime
+              ? "border-l-rose-500"
               : isEndingSoon
-                ? "ending"
+                ? "border-l-amber-500"
                 : playOk
-                  ? "play"
-                  : "walkin";
-            const cardTone =
-              tone === "over"
-                ? "border-rose-300 dark:border-rose-800 bg-gradient-to-br from-rose-50 via-white to-white dark:from-rose-950/50 dark:via-slate-900 dark:to-slate-900 shadow-[inset_4px_0_0_0_rgb(244,63,94)]"
-                : tone === "ending"
-                  ? "border-amber-300 dark:border-amber-800 bg-gradient-to-br from-amber-50 via-white to-white dark:from-amber-950/40 dark:via-slate-900 dark:to-slate-900 shadow-[inset_4px_0_0_0_rgb(245,158,11)]"
-                  : tone === "play"
-                    ? "border-emerald-200 dark:border-emerald-900/60 bg-gradient-to-br from-emerald-50/90 via-white to-white dark:from-emerald-950/30 dark:via-slate-900 dark:to-slate-900 shadow-[inset_4px_0_0_0_rgb(16,185,129)]"
-                    : "border-sky-200 dark:border-sky-900/60 bg-gradient-to-br from-sky-50/90 via-white to-white dark:from-sky-950/30 dark:via-slate-900 dark:to-slate-900 shadow-[inset_4px_0_0_0_rgb(14,165,233)]";
+                  ? "border-l-emerald-500"
+                  : "border-l-slate-300 dark:border-l-slate-600";
 
             return (
-              <div key={visit.id} className={`rounded-2xl border transition-all p-3.5 ${cardTone}`}>
-                <div className="flex items-start justify-between">
-                  <div className="space-y-0.5 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-black text-base font-mono text-slate-900 dark:text-white">{visit.code}</span>
+              <article
+                key={visit.id}
+                className={`rounded-xl border border-slate-200 dark:border-slate-800 border-l-4 ${edge} bg-white dark:bg-slate-900 p-3 shadow-sm hover:-translate-y-0.5 hover:shadow-md active:scale-[0.995] transition-all duration-150`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono font-bold text-slate-900 dark:text-white">{visit.code}</span>
                       {visit.tableNo ? (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                        <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
                           {visit.tableNo}
                         </span>
                       ) : null}
                       {visit.leftAt ? (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300">
+                        <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 dark:bg-amber-950 dark:text-amber-300 px-1.5 py-0.5 rounded">
                           Held
                         </span>
                       ) : null}
-                    </div>
-                    <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
-                      <span className="flex items-center gap-1 font-medium text-slate-700 dark:text-slate-300">
-                        <User className="h-3 w-3" /> {visit.guardianName || "Guest"}
-                      </span>
-                      {visit.phone && !visit.phone.startsWith("F") ? (
-                        <span className="flex items-center gap-1 font-mono text-slate-600 dark:text-slate-300">
-                          <Phone className="h-3 w-3" /> {visit.phone}
+                      {!playOk ? (
+                        <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
+                          Walk-in
                         </span>
                       ) : null}
                     </div>
+                    <p className="mt-1 text-xs text-slate-600 dark:text-slate-300 truncate">
+                      {visit.guardianName || "Guest"}
+                      {visit.phone && !visit.phone.startsWith("F") ? ` · ${visit.phone}` : ""}
+                      {visit.childCount > 0 ? ` · ${visit.childCount} kid${visit.childCount === 1 ? "" : "s"}` : ""}
+                    </p>
                   </div>
 
                   {playOk ? (
                     <div
-                      className={`flex flex-col items-end gap-0.5 px-3 py-1.5 rounded-xl font-mono text-xs font-bold shrink-0 ${
+                      className={`shrink-0 rounded-lg px-2.5 py-1.5 text-right font-mono text-xs font-bold ${
                         isOvertime
-                          ? "bg-rose-600 text-white animate-pulse shadow-sm shadow-rose-600/30"
+                          ? "bg-rose-600 text-white"
                           : isEndingSoon
-                            ? "bg-amber-500 text-white shadow-sm shadow-amber-500/25"
-                            : "bg-emerald-600 text-white shadow-sm shadow-emerald-600/20"
+                            ? "bg-amber-500 text-white"
+                            : "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-100"
                       }`}
                     >
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-3.5 w-3.5" />
-                        {isOvertime ? `${Math.abs(diffMin)}m OVER` : `${diffMin}m left`}
+                      <span className="inline-flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {isOvertime ? `${Math.abs(diffMin)}m over` : `${diffMin}m`}
                       </span>
-                      <span className="text-[9px] font-semibold opacity-90 normal-case tracking-normal">
-                        {isOvertime ? "Charge or extend" : isEndingSoon ? "Ending soon" : "Play time"}
-                      </span>
+                      {isOvertime ? (
+                        <p className="text-[9px] font-semibold opacity-90">~Nu. {overtimeNu}</p>
+                      ) : null}
                     </div>
-                  ) : (
-                    <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-sky-600 text-white">
-                      Walk-in
-                    </span>
-                  )}
+                  ) : null}
                 </div>
 
-                {isOvertime ? (
-                  <div className="mt-3 p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/40 text-rose-800 dark:text-rose-300 text-xs space-y-2">
-                    <div className="flex items-center justify-between gap-2 font-medium">
-                      <span className="flex items-center gap-1">
-                        <AlertCircle className="h-3.5 w-3.5 text-rose-500" />
-                        Overtime (+{Math.abs(diffMin)} min) — staff may have forgotten to extend
-                      </span>
-                      <span className="font-bold font-mono shrink-0">~Nu. {overtimeNu}</span>
-                    </div>
-                    {onExtend ? (
-                      <button
-                        type="button"
-                        onClick={() => onExtend(visit)}
-                        className="w-full py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-bold"
-                      >
-                        Fix overtime · extend / charge / waive
-                      </button>
-                    ) : null}
-                  </div>
+                {isOvertime && onExtend ? (
+                  <button
+                    type="button"
+                    onClick={() => onExtend(visit)}
+                    className="mt-2.5 w-full py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold active:scale-[0.985] transition"
+                  >
+                    Fix overtime
+                  </button>
                 ) : null}
 
                 {visit.lines.length > 0 ? (
-                  <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800/80 text-xs text-slate-600 dark:text-slate-400">
-                    <span className="font-semibold text-slate-700 dark:text-slate-300">
-                      Food Tab ({visit.lines.length} items):
-                    </span>{" "}
-                    {visit.lines.map((l) => `${l.qty}x ${l.name}`).join(", ")}
-                  </div>
+                  <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                    Food: {visit.lines.map((l) => `${l.qty}× ${l.name}`).join(", ")}
+                  </p>
                 ) : null}
 
-                <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-2">
-                  {playOk && onExtend ? (
+                <div className="mt-2.5 flex items-center gap-1.5">
+                  {playOk && onExtend && !isOvertime ? (
                     <button
                       type="button"
                       onClick={() => onExtend(visit)}
-                      className={`flex-1 min-w-[6.5rem] py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors ${
-                        isOvertime || isEndingSoon
-                          ? "bg-amber-500 hover:bg-amber-400 text-white"
-                          : "border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200"
-                      }`}
+                      className="flex-1 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 active:scale-[0.985] inline-flex items-center justify-center gap-1"
                     >
-                      <Timer className="h-3.5 w-3.5" />
-                      <span>Extend</span>
+                      <Timer className="h-3.5 w-3.5" /> Extend
                     </button>
                   ) : null}
-
                   <button
                     type="button"
                     onClick={() => onSelectForOrder(visit)}
-                    className="flex-1 min-w-[5.5rem] py-2 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 flex items-center justify-center gap-1.5 transition-colors"
+                    className="flex-1 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 active:scale-[0.985] inline-flex items-center justify-center gap-1"
                   >
-                    <Utensils className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                    <span>Food</span>
+                    <Utensils className="h-3.5 w-3.5" /> Food
                   </button>
-
                   <button
                     type="button"
                     onClick={() => onSelectForCheckout(visit)}
-                    className="flex-1 min-w-[5.5rem] py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm shadow-emerald-600/20 active:scale-[0.98] transition-all"
+                    className="flex-1 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold active:scale-[0.985] inline-flex items-center justify-center gap-1 shadow-sm"
                   >
-                    <QrCode className="h-3.5 w-3.5" />
-                    <span>Settle</span>
+                    <QrCode className="h-3.5 w-3.5" /> Settle
                   </button>
-
                   <div className="relative">
                     <button
                       type="button"
                       onClick={() => setMenuId(menuId === visit.id ? null : visit.id)}
-                      className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
-                      title="More actions"
+                      className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800"
+                      aria-label="More"
                     >
                       <MoreHorizontal className="h-4 w-4" />
                     </button>
                     {menuId === visit.id ? (
-                      <div className="absolute right-0 bottom-full mb-1 z-20 w-44 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg py-1 text-xs">
+                      <div className="absolute right-0 bottom-full mb-1 z-20 w-40 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg py-1 text-xs">
                         {playOk ? (
                           <button
                             type="button"
                             disabled={busyId === visit.id}
                             onClick={() => void reprint(visit)}
-                            className="w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2 text-slate-800 dark:text-slate-200"
+                            className="w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2"
                           >
-                            <Printer className="h-3.5 w-3.5" /> Reprint pass
+                            <Printer className="h-3.5 w-3.5" /> Reprint
                           </button>
                         ) : null}
                         {playOk && !visit.leftAt ? (
@@ -324,9 +280,9 @@ export function FloorRadar({
                             type="button"
                             disabled={busyId === visit.id}
                             onClick={() => void runAction(visit, "hold")}
-                            className="w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2 text-slate-800 dark:text-slate-200"
+                            className="w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2"
                           >
-                            <Pause className="h-3.5 w-3.5" /> Hold / left floor
+                            <Pause className="h-3.5 w-3.5" /> Hold
                           </button>
                         ) : null}
                         {leaveOk ? (
@@ -334,7 +290,7 @@ export function FloorRadar({
                             type="button"
                             disabled={busyId === visit.id}
                             onClick={() => void runAction(visit, "leave")}
-                            className="w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2 text-slate-800 dark:text-slate-200"
+                            className="w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2"
                           >
                             <LogOut className="h-3.5 w-3.5" /> Leave on time
                           </button>
@@ -344,7 +300,7 @@ export function FloorRadar({
                             type="button"
                             disabled={busyId === visit.id}
                             onClick={() => void runAction(visit, "cancel")}
-                            className="w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2 text-slate-800 dark:text-slate-200"
+                            className="w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2"
                           >
                             <LogOut className="h-3.5 w-3.5" /> Close tab
                           </button>
@@ -353,7 +309,7 @@ export function FloorRadar({
                     ) : null}
                   </div>
                 </div>
-              </div>
+              </article>
             );
           })
         )}

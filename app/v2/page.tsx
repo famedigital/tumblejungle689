@@ -143,64 +143,61 @@ export default function V2HandheldPos() {
 
       <CounterPrintBridge />
 
-      {/* DESKTOP COUNTER — viewport locked; panes scroll internally */}
-      <div className="hidden md:grid flex-1 min-h-0 max-w-[1680px] w-full mx-auto p-3 lg:p-4 gap-3 lg:gap-4 grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)] overflow-hidden">
-        <section className="min-h-0 flex flex-col gap-2.5 overflow-hidden">
+      {/* DESKTOP — calm two panes; only lists scroll (hidden bars) */}
+      <div className="hidden md:grid flex-1 min-h-0 max-w-[1600px] w-full mx-auto p-3 gap-3 grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] overflow-hidden relative">
+        <section className="min-h-0 flex flex-col gap-2 overflow-hidden">
           <DayMeters />
 
-          <div className="flex items-center justify-between shrink-0 px-0.5">
-            <h2 className="font-bold text-sm lg:text-base text-slate-900 dark:text-white flex items-center gap-2">
-              <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-sky-500/15 text-sky-700 dark:text-sky-300">
-                <Clock className="h-4 w-4" />
-              </span>
-              <span>Floor</span>
-              <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 tabular-nums bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-2 py-0.5 rounded-full">
-                {activeVisitsCount} open
-              </span>
+          <div className="flex items-center justify-between shrink-0">
+            <h2 className="font-semibold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+              <Clock className="h-4 w-4 text-slate-500" />
+              Floor
+              <span className="text-[11px] font-medium text-slate-500 tabular-nums">{activeVisitsCount}</span>
             </h2>
             <button
               type="button"
               onClick={() => setShowDesktopAdmit(!showDesktopAdmit)}
-              className="py-1.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm active:scale-[0.985]"
+              className="py-1.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 active:scale-[0.985] shadow-sm"
             >
-              <Plus className="h-4 w-4" />
-              <span>{showDesktopAdmit ? "Close" : "Admit"}</span>
+              <Plus className="h-3.5 w-3.5" />
+              {showDesktopAdmit ? "Close admit" : "Admit"}
             </button>
           </div>
 
-          {showDesktopAdmit ? (
-            <div className="shrink-0 rounded-2xl border border-emerald-500/25 bg-emerald-50/40 dark:bg-emerald-950/20 overflow-y-auto max-h-[34%]">
-              <AdmissionView onSuccess={() => setShowDesktopAdmit(false)} />
-            </div>
-          ) : null}
-
-          <div className="min-h-0 flex-1 rounded-2xl border border-sky-200/70 dark:border-sky-900/40 bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
-            <div className="h-full overflow-y-auto overscroll-contain">
+          <div className="min-h-0 flex-1 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-sm relative">
+            {showDesktopAdmit ? (
+              <div className="absolute inset-0 z-20 bg-white dark:bg-slate-900 till-scroll overflow-y-auto">
+                <div className="sticky top-0 z-10 flex items-center justify-between px-3 py-2 border-b border-slate-100 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur">
+                  <p className="text-xs font-bold text-slate-800 dark:text-slate-100">New admission</p>
+                  <button
+                    type="button"
+                    onClick={() => setShowDesktopAdmit(false)}
+                    className="text-[11px] font-semibold text-slate-500 hover:text-slate-800"
+                  >
+                    Back to floor
+                  </button>
+                </div>
+                <AdmissionView onSuccess={() => setShowDesktopAdmit(false)} />
+              </div>
+            ) : null}
+            <div className="till-scroll h-full overflow-y-auto overscroll-contain">
               <FloorRadar {...floorHandlers} />
             </div>
           </div>
         </section>
 
-        <section className="min-h-0 flex flex-col gap-2.5 overflow-hidden">
-          <div className="flex items-center justify-between shrink-0 px-0.5">
-            <h2 className="font-bold text-sm lg:text-base text-slate-900 dark:text-white flex items-center gap-2">
-              <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-violet-500/15 text-violet-700 dark:text-violet-300">
-                <Utensils className="h-4 w-4" />
-              </span>
-              <span>Kitchen orders</span>
+        <section className="min-h-0 flex flex-col gap-2 overflow-hidden">
+          <div className="flex items-center justify-between shrink-0">
+            <h2 className="font-semibold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+              <Utensils className="h-4 w-4 text-slate-500" />
+              Orders
             </h2>
-            {selectedVisitForOrder ? (
-              <span className="text-xs font-semibold text-violet-800 dark:text-violet-200 bg-violet-500/15 border border-violet-200 dark:border-violet-800 px-2.5 py-1 rounded-full">
-                {selectedVisitForOrder.code}
-              </span>
-            ) : (
-              <span className="text-xs font-medium text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-2.5 py-1 rounded-full">
-                Walk-in ready
-              </span>
-            )}
+            <span className="text-[11px] font-medium text-slate-500">
+              {selectedVisitForOrder ? selectedVisitForOrder.code : "Walk-in"}
+            </span>
           </div>
 
-          <div className="min-h-0 flex-1 rounded-2xl border border-violet-200/70 dark:border-violet-900/40 bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
+          <div className="min-h-0 flex-1 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
             <OrderView
               targetVisit={selectedVisitForOrder}
               onClearTargetVisit={() => setSelectedVisitForOrder(null)}
@@ -211,7 +208,7 @@ export default function V2HandheldPos() {
       </div>
 
       {/* MOBILE */}
-      <main className="md:hidden flex-1 min-h-0 pb-20 flex flex-col overflow-y-auto overscroll-contain">
+      <main className="till-scroll md:hidden flex-1 min-h-0 pb-20 flex flex-col overflow-y-auto overscroll-contain">
         {activeTab === "admit" && (
           <AdmissionView
             onSuccess={() => {
