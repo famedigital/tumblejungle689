@@ -159,6 +159,13 @@
   h1, h2, h3, .font-heading {
     font-family: var(--font-heading), Georgia, serif;
   }
+  /* Till / POS UI stays system sans — serif headings are for the public site only */
+  .till-ui h1,
+  .till-ui h2,
+  .till-ui h3,
+  .till-ui .font-heading {
+    font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  }
 }
 .till-secret {
   -webkit-text-security: disc;

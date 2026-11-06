@@ -129,7 +129,7 @@ export default function V2HandheldPos() {
   };
 
   return (
-    <div className="h-dvh max-h-dvh md:overflow-hidden overflow-x-hidden bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans select-none antialiased">
+    <div className="till-ui h-dvh max-h-dvh md:overflow-hidden overflow-x-hidden bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans select-none antialiased">
       <TopBar
         onOpenStaffModal={() => setIsStaffModalOpen(true)}
         onOpenAudit={() => setIsAuditDrawerOpen(true)}
