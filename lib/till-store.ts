@@ -14,6 +14,7 @@ export type TillBase = {
   generation: number;
   venueName: string;
   address: string;
+  phone: string;
   rates: Rate[];
   extraPerMinNu: number;
   bankAccount: string;
@@ -55,6 +56,7 @@ export function emptyBase(): TillBase {
     generation: 0,
     venueName: "Tumble Jungle",
     address: "",
+    phone: "",
     rates: [],
     extraPerMinNu: 0,
     bankAccount: "",

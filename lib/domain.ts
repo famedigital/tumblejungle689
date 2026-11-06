@@ -1,4 +1,3 @@
-import { randomBytes } from "node:crypto";
 import {
   ensureJournalColumn,
   ensureStockSchema,
@@ -11,7 +10,16 @@ import {
   type Query,
 } from "@/lib/db";
 import { toStaticEmv } from "@/lib/emv";
-import { addMinutes, minutesLeft, normalizePhone, thimphuDayRange } from "@/lib/format";
+import type { DayReportPack } from "@/lib/day-report";
+import {
+  addMinutes,
+  formatClock,
+  formatWhen,
+  minutesLeft,
+  normalizePhone,
+  serialCode,
+  thimphuDayRange,
+} from "@/lib/format";
 import { quoteOvertime, type OvertimeQuote } from "@/lib/overtime";
 import type {
   DaySummary,
@@ -30,8 +38,6 @@ import type {
 import { bankFromJournal, knownBank } from "@/lib/pay-banks";
 import { chargeRatesOf, parsePercent, quoteCharges, readPercent } from "@/lib/charges";
 import { canFloorDrop, canLeaveOnTime, isPlayVisit, playIsOvertime, unpaidFood, unpaidPlay } from "@/lib/visit-rules";
-
-const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -61,6 +67,7 @@ export async function getSettings(): Promise<Settings> {
     address: read("address"),
     hours: read("hours"),
     phone: read("phone"),
+    ownerPhone: read("owner_phone"),
     about: read("about"),
     playBlurb: read("play_blurb"),
     eatBlurb: read("eat_blurb"),
@@ -100,6 +107,7 @@ export async function saveVenue(input: {
   address: string;
   hours: string;
   phone: string;
+  ownerPhone?: string;
   about: string;
   playBlurb: string;
   eatBlurb: string;
@@ -109,6 +117,7 @@ export async function saveVenue(input: {
   await putSetting("address", input.address.trim());
   await putSetting("hours", input.hours.trim());
   await putSetting("phone", input.phone.trim());
+  if (input.ownerPhone !== undefined) await putSetting("owner_phone", input.ownerPhone.trim());
   await putSetting("about", input.about.trim());
   await putSetting("play_blurb", input.playBlurb.trim());
   await putSetting("eat_blurb", input.eatBlurb.trim());
@@ -694,8 +703,16 @@ const VISIT_SQL = `
 export async function getVisitByCode(code: string): Promise<VisitView | null> {
   const clean = code.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
   if (!clean) return null;
-  const row = await query().one<VisitRow>(`${VISIT_SQL} WHERE v.short_code = ?`, [clean]);
-  return row ? hydrate(row) : null;
+  const byCode = await query().one<VisitRow>(`${VISIT_SQL} WHERE v.short_code = ?`, [clean]);
+  if (byCode) return hydrate(byCode);
+  if (/^\d+$/.test(clean)) {
+    const receiptNo = Number(clean);
+    if (receiptNo > 0) {
+      const byReceipt = await query().one<VisitRow>(`${VISIT_SQL} WHERE v.receipt_no = ?`, [receiptNo]);
+      if (byReceipt) return hydrate(byReceipt);
+    }
+  }
+  return null;
 }
 
 export async function getVisitById(id: number): Promise<VisitView | null> {
@@ -747,14 +764,16 @@ export async function searchHits(term: string): Promise<VisitHit[]> {
   const code = raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
   const phone = raw.replace(/\D/g, "");
   const text = `%${raw.replace(/[%_]/g, "")}%`;
+  const receiptNo = /^\d+$/.test(code) ? Number(code) : 0;
   const rows = await query().many<VisitRow>(
     `${VISIT_SQL}
      WHERE (? <> '' AND v.short_code ILIKE ?)
+        OR (? > 0 AND v.receipt_no = ?)
         OR (? <> '' AND g.phone LIKE ?)
         OR COALESCE(v.table_no, '') ILIKE ?
      ORDER BY CASE WHEN v.status = 'open' THEN 0 ELSE 1 END, v.id DESC
      LIMIT 8`,
-    [code, `${code}%`, phone, `${phone}%`, text],
+    [code, `${code}%`, receiptNo, receiptNo, phone, `${phone}%`, text],
   );
   const visits = await hydrateMany(rows);
   return visits.map((visit) => ({
@@ -773,11 +792,6 @@ export async function searchHits(term: string): Promise<VisitHit[]> {
 export async function listOpenVisits(): Promise<VisitView[]> {
   const rows = await query().many<VisitRow>(`${VISIT_SQL} WHERE v.status = 'open' ORDER BY v.paid_until`);
   return hydrateMany(rows);
-}
-
-function shortCode(): string {
-  const bytes = randomBytes(6);
-  return [...bytes].map((byte) => CODE_ALPHABET[byte % CODE_ALPHABET.length]).join("");
 }
 
 async function rateFor(minutes: number): Promise<Rate> {
@@ -827,15 +841,14 @@ export async function createVisit(input: {
     if (guardian && input.name.trim()) {
       await database.exec("UPDATE guardians SET name = ? WHERE id = ?", [input.name.trim(), guardianId]);
     }
-    const wanted = (input.code ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-    let code = wanted.length >= 4 ? wanted : shortCode();
-    while (await database.one("SELECT 1 FROM visits WHERE short_code = ?", [code])) {
-      code = shortCode();
-    }
+    const wanted = (input.code ?? "").trim().replace(/[^0-9]/g, "");
+    const preferred = wanted ? Number(wanted) : 0;
+    const receiptNo = await takeReceiptNo(database, preferred);
+    const code = serialCode(receiptNo);
     const createdVisit = await database.insert(
-      `INSERT INTO visits (short_code, guardian_id, status, child_count, created_at, paid_until)
-       VALUES (?, ?, 'open', ?, ?, ?)`,
-      [code, guardianId, children, created, paidUntil],
+      `INSERT INTO visits (short_code, guardian_id, status, child_count, created_at, paid_until, receipt_no)
+       VALUES (?, ?, 'open', ?, ?, ?, ?)`,
+      [code, guardianId, children, created, paidUntil, receiptNo],
     );
     await database.exec(
       `INSERT INTO play_blocks
@@ -1103,7 +1116,10 @@ export async function settleComplimentary(visitId: number, actor: TillActor, rec
     if (foodDue > 0) await database.exec("UPDATE tab_lines SET paid = 1 WHERE visit_id = ? AND paid = 0", [visitId]);
     if (playDue > 0) await database.exec("UPDATE play_blocks SET paid = 1 WHERE visit_id = ? AND paid = 0", [visitId]);
     if (quote && quote.amountNu > 0) await recordOvertime(database, visit, quote);
-    const number = await takeReceiptNo(database, receiptNo);
+    const number =
+      visit.receiptNo && visit.receiptNo > 0
+        ? visit.receiptNo
+        : await takeReceiptNo(database, receiptNo);
     await database.exec("UPDATE visits SET receipt_no = ?, status = 'settled', closed_at = ? WHERE id = ?", [
       number,
       closed,
@@ -1215,18 +1231,19 @@ export async function addWalkInItem(
   await ensureStockSchema();
   const created = nowIso();
   const visitId = await tx(async (database) => {
-    const wanted = (stamp?.code ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-    let code = wanted.length >= 4 ? wanted : shortCode();
-    while (await database.one("SELECT 1 FROM visits WHERE short_code = ?", [code])) code = shortCode();
+    const wanted = (stamp?.code ?? "").trim().replace(/[^0-9]/g, "");
+    const preferred = wanted ? Number(wanted) : 0;
+    const receiptNo = await takeReceiptNo(database, preferred);
+    const code = serialCode(receiptNo);
     const guardianId = await database.insert("INSERT INTO guardians (phone, name, created_at) VALUES (?, ?, ?)", [
       `F${code}`,
       "Walk-in",
       created,
     ]);
     const createdVisit = await database.insert(
-      `INSERT INTO visits (short_code, guardian_id, status, child_count, created_at, paid_until)
-       VALUES (?, ?, 'open', 0, ?, ?)`,
-      [code, guardianId, created, created],
+      `INSERT INTO visits (short_code, guardian_id, status, child_count, created_at, paid_until, receipt_no)
+       VALUES (?, ?, 'open', 0, ?, ?, ?)`,
+      [code, guardianId, created, created, receiptNo],
     );
     await database.exec(
       `INSERT INTO tab_lines
@@ -1468,7 +1485,10 @@ export async function settleVisit(
     }
     if (charges.serviceNu > 0) await payKind(database, visitId, "service", charges.serviceNu, pot, ref, payBank);
     if (charges.gstNu > 0) await payKind(database, visitId, "gst", charges.gstNu, pot, ref, payBank);
-    const number = await takeReceiptNo(database, receiptNo);
+    const number =
+      visit.receiptNo && visit.receiptNo > 0
+        ? visit.receiptNo
+        : await takeReceiptNo(database, receiptNo);
     await database.exec("UPDATE visits SET receipt_no = ?, status = 'settled', closed_at = ? WHERE id = ?", [
       number,
       closed,
@@ -1719,6 +1739,68 @@ function thimphuStamp(iso: string) {
       timeZone: "Asia/Thimphu",
       weekday: "short",
     }).format(date),
+  };
+}
+
+/** Detailed Thimphu-day pack for thermal print + owner WhatsApp (defaults to today). */
+export async function buildDayReport(_dayKey?: string): Promise<DayReportPack> {
+  const settings = await getSettings();
+  const pulse = await floorPulse();
+  const totals = await dayTotals();
+  const range = thimphuDayRange();
+  const summary = pulse.summary;
+
+  let voidsNu = 0;
+  let compsNu = 0;
+  try {
+    await ensureTillEvents();
+    const events = await query().many<{ kind: string; amount_nu: number }>(
+      `SELECT kind, amount_nu FROM till_events
+       WHERE created_at >= ? AND created_at < ?
+         AND kind IN ('void', 'voidVisit', 'voidLine', 'voidOrder', 'comp', 'waive')`,
+      [range.start, range.end],
+    );
+    for (const row of events) {
+      const amount = Number(row.amount_nu) || 0;
+      if (row.kind === "comp" || row.kind === "waive") compsNu += amount;
+      else voidsNu += amount;
+    }
+  } catch {
+    /* till_events optional on older DBs */
+  }
+
+  return {
+    venue: settings.venueName,
+    dateKey: range.key,
+    generatedAt: formatWhen(nowIso()),
+    takings: {
+      totalNu: summary.totalNu,
+      cashNu: summary.cashNu,
+      bankNu: summary.bankNu,
+      playNu: summary.playNu,
+      foodNu: summary.foodNu,
+      kotNu: totals.kotNu,
+      botNu: totals.botNu,
+    },
+    counts: {
+      openVisits: summary.openCount,
+      settledTickets: summary.settledCount,
+      paymentCount: summary.payments.length,
+    },
+    voidsNu,
+    compsNu,
+    hours: pulse.hours,
+    stations: pulse.stations,
+    openVisits: pulse.open
+      .filter((visit) => visit.dueNu > 0)
+      .slice(0, 12)
+      .map((visit) => ({ code: visit.code, phone: visit.phone, dueNu: visit.dueNu })),
+    payments: summary.payments.slice(0, 40).map((pay) => ({
+      time: formatClock(pay.createdAt),
+      method: pay.method,
+      kind: pay.kind,
+      amountNu: pay.amountNu,
+    })),
   };
 }
 

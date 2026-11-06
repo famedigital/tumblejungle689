@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { requireArea } from "@/lib/auth";
-import { floorPulse, getSettings, listStaff } from "@/lib/domain";
+import { buildDayReport, floorPulse, getSettings, listStaff } from "@/lib/domain";
 
 const SECTIONS = ["floor", "page", "charges", "staff"] as const;
 
@@ -29,9 +29,11 @@ export default async function AdminPage({
     : "floor";
   const settings = section === "page" || section === "charges" || section === "floor" ? await getSettings() : null;
   const pulse = section === "floor" ? await floorPulse() : null;
+  const dayReport = section === "floor" ? await buildDayReport() : null;
   const staff = section === "staff" ? await listStaff() : [];
   const panel = "space-y-4 rounded-3xl bg-card p-5 ring-1 ring-foreground/10";
   const title = section === "page" ? "Public page" : section === "charges" ? "Charges" : section === "staff" ? "Staff" : "Floor";
+  const ownerPhone = settings?.ownerPhone?.trim() || settings?.phone?.trim() || "";
 
   return (
     <StaffShell role={session.role} name={session.name} title={title} tone="candy" current={section}>
@@ -45,9 +47,13 @@ export default async function AdminPage({
               bankNu: pulse.summary.bankNu,
               playNu: pulse.summary.playNu,
               foodNu: pulse.summary.foodNu,
+              voidNu: dayReport?.voidsNu,
+              compNu: dayReport?.compsNu,
               settledCount: pulse.summary.settledCount,
             }}
             venue={settings?.venueName}
+            ownerPhone={ownerPhone}
+            report={dayReport}
           />
           <FloorBoard pulse={pulse} />
         </div>
@@ -61,6 +67,12 @@ export default async function AdminPage({
             <Field name="address" label="Address" defaultValue={settings.address} />
             <Field name="hours" label="Hours" defaultValue={settings.hours} placeholder="Leave blank until you set them" />
             <Field name="phone" label="Phone" defaultValue={settings.phone} />
+            <Field
+              name="ownerPhone"
+              label="Owner WhatsApp"
+              defaultValue={settings.ownerPhone}
+              placeholder="Falls back to venue phone"
+            />
             <Area name="about" label="About" defaultValue={settings.about} />
             <Area name="playBlurb" label="Play page" defaultValue={settings.playBlurb} />
             <Area name="eatBlurb" label="Cafe page" defaultValue={settings.eatBlurb} />

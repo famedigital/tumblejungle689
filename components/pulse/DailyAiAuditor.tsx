@@ -1,10 +1,12 @@
 "use client";
 
 import { useMemo } from "react";
-import { AlertTriangle, MessageCircle, Send } from "lucide-react";
+import { AlertTriangle, MessageCircle, Printer, Send } from "lucide-react";
+import { DayReportSlip } from "@/components/day-report-slip";
 import { GlassBadge } from "@/components/ui/glass/GlassBadge";
 import { GlassButton } from "@/components/ui/glass/GlassButton";
 import { GlassCard } from "@/components/ui/glass/GlassCard";
+import { formatDayReportWhatsApp, waMeOwnerUrl, type DayReportPack } from "@/lib/day-report";
 import { formatNu } from "@/lib/format";
 
 export type DailyAuditorSummary = {
@@ -22,34 +24,34 @@ type Props = {
   summary: DailyAuditorSummary;
   venue?: string;
   ownerPhone?: string;
+  report?: DayReportPack | null;
 };
 
-function buildShareText(summary: DailyAuditorSummary, venue: string): string {
-  const lines = [
-    `📊 ${venue} — End of day Pulse audit`,
-    `Total: ${formatNu(summary.totalNu)}`,
-    `Cash: ${formatNu(summary.cashNu)} · Bank QR: ${formatNu(summary.bankNu)}`,
-    `Play: ${formatNu(summary.playNu)} · F&B: ${formatNu(summary.foodNu)}`,
-  ];
-  if (summary.voidNu != null && summary.voidNu > 0) lines.push(`Voids: ${formatNu(summary.voidNu)}`);
-  if (summary.compNu != null && summary.compNu > 0) lines.push(`Comps: ${formatNu(summary.compNu)}`);
-  if (summary.settledCount != null) lines.push(`Settled tickets: ${summary.settledCount}`);
-  return lines.join("\n");
+function printDayReport() {
+  const previous = document.body.dataset.print;
+  document.body.dataset.print = "day";
+  const restore = () => {
+    window.removeEventListener("afterprint", restore);
+    if (previous) document.body.dataset.print = previous;
+    else delete document.body.dataset.print;
+  };
+  window.addEventListener("afterprint", restore);
+  window.print();
 }
 
-export function DailyAiAuditor({ summary, venue = "Tumble Jungle", ownerPhone }: Props) {
-  const shareText = useMemo(() => buildShareText(summary, venue), [summary, venue]);
+export function DailyAiAuditor({ summary, venue = "Tumble Jungle", ownerPhone, report }: Props) {
+  const shareText = useMemo(
+    () => (report ? formatDayReportWhatsApp(report) : ""),
+    [report],
+  );
 
   const cashShare = summary.totalNu > 0 ? summary.cashNu / summary.totalNu : 0;
   const bankShare = summary.totalNu > 0 ? summary.bankNu / summary.totalNu : 0;
   const playShare = summary.totalNu > 0 ? summary.playNu / summary.totalNu : 0;
   const voidHigh = (summary.voidNu ?? 0) > Math.max(500, summary.totalNu * 0.05);
 
-  const whatsAppUrl = ownerPhone
-    ? `https://wa.me/${ownerPhone.replace(/\D/g, "")}?text=${encodeURIComponent(shareText)}`
-    : `https://wa.me/?text=${encodeURIComponent(shareText)}`;
-
-  const telegramUrl = `https://t.me/share/url?url=&text=${encodeURIComponent(shareText)}`;
+  const whatsAppUrl = waMeOwnerUrl(ownerPhone ?? "", shareText || `${venue} day report`);
+  const telegramUrl = `https://t.me/share/url?url=&text=${encodeURIComponent(shareText || venue)}`;
 
   return (
     <div className="space-y-4">
@@ -142,9 +144,9 @@ export function DailyAiAuditor({ summary, venue = "Tumble Jungle", ownerPhone }:
       ) : null}
 
       <GlassCard padding="md">
-        <p className="text-[11px] font-semibold uppercase text-slate-500 dark:text-slate-400">Owner dispatch</p>
-        <pre className="mt-2 whitespace-pre-wrap rounded-xl bg-slate-100/80 p-3 text-sm text-slate-800 dark:bg-slate-900/60 dark:text-slate-200">
-          {shareText}
+        <p className="text-[11px] font-semibold uppercase text-slate-500 dark:text-slate-400">Owner day report</p>
+        <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-xl bg-slate-100/80 p-3 text-sm text-slate-800 dark:bg-slate-900/60 dark:text-slate-200">
+          {shareText || "No report pack loaded."}
         </pre>
         <div className="mt-3 flex flex-wrap gap-2">
           <GlassButton
@@ -152,23 +154,38 @@ export function DailyAiAuditor({ summary, venue = "Tumble Jungle", ownerPhone }:
             variant="emerald"
             size="lg"
             className="min-h-11 min-w-[44px]"
-            onClick={() => window.open(whatsAppUrl, "_blank", "noopener,noreferrer")}
+            onClick={() => printDayReport()}
+            disabled={!report}
           >
-            <MessageCircle className="size-5" aria-hidden />
-            WhatsApp
+            <Printer className="size-5" aria-hidden />
+            Print day report
           </GlassButton>
           <GlassButton
             type="button"
             variant="teal"
             size="lg"
             className="min-h-11 min-w-[44px]"
+            onClick={() => window.open(whatsAppUrl, "_blank", "noopener,noreferrer")}
+            disabled={!shareText}
+          >
+            <MessageCircle className="size-5" aria-hidden />
+            WhatsApp owner
+          </GlassButton>
+          <GlassButton
+            type="button"
+            variant="ghost"
+            size="lg"
+            className="min-h-11 min-w-[44px]"
             onClick={() => window.open(telegramUrl, "_blank", "noopener,noreferrer")}
+            disabled={!shareText}
           >
             <Send className="size-5" aria-hidden />
             Telegram
           </GlassButton>
         </div>
       </GlassCard>
+
+      {report ? <DayReportSlip pack={report} /> : null}
     </div>
   );
 }

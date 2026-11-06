@@ -9,6 +9,17 @@ export function codeFromScan(raw: string): string {
   return raw.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
+/** Serial ticket / QR code = receipt number as digits (easy to type at till). */
+export function serialCode(receiptNo: number): string {
+  const n = Math.max(1, Math.round(receiptNo));
+  return String(n);
+}
+
+export function formatReceiptNo(receiptNo: number | null | undefined): string {
+  if (receiptNo == null || receiptNo <= 0) return "";
+  return `#${receiptNo}`;
+}
+
 export function tableLabel(tableNo: string): string {
   const table = tableNo.trim().replace(/^table\s+/i, "");
   if (!table || table.toLowerCase() === "standing") return "Standing";

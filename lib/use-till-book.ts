@@ -153,8 +153,13 @@ export function useTillBook(query?: string) {
         bookRef.current.base.extraPerMinNu ?? 0,
         chargeRatesOf(bookRef.current.base),
       );
+      const receiptNo = /^\d+$/.test(wanted) ? Number(wanted) : 0;
       const local = visits.find(
-        (visit) => visit.status === "open" && (visit.code === wanted || (phone.length === 8 && visit.phone === phone)),
+        (visit) =>
+          visit.status === "open" &&
+          (visit.code === wanted ||
+            (receiptNo > 0 && visit.receiptNo === receiptNo) ||
+            (phone.length === 8 && visit.phone === phone)),
       );
       if (local) {
         setError("");
@@ -218,10 +223,35 @@ export function useTillBook(query?: string) {
 
   const commit = useCallback(
     (op: TillOp) => {
+      const nextNo = Math.max(1, bookRef.current.base.nextReceipt || 1);
+      const foldedNow = foldOps(
+        bookRef.current.base.visits,
+        bookRef.current.outbox,
+        bookRef.current.base.menu,
+        bookRef.current.base.rates,
+        bookRef.current.base.extraPerMinNu ?? 0,
+        chargeRatesOf(bookRef.current.base),
+      );
+      const existing = foldedNow.find((visit) => visitKey(visit) === op.visitKey);
       const stamped =
         op.kind === "settle"
-          ? { ...op, receiptNo: op.receiptNo || Math.max(1, bookRef.current.base.nextReceipt || 1) }
-          : op;
+          ? {
+              ...op,
+              receiptNo: op.receiptNo || existing?.receiptNo || nextNo,
+            }
+          : op.kind === "checkIn"
+            ? {
+                ...op,
+                receiptNo: op.receiptNo || nextNo,
+                code: String(op.receiptNo || nextNo),
+              }
+            : op.kind === "addItem" && !existing
+              ? { ...op, receiptNo: op.receiptNo || nextNo, code: String(op.receiptNo || nextNo) }
+              : op;
+      const burnsSerial =
+        stamped.kind === "checkIn" ||
+        (stamped.kind === "addItem" && !existing) ||
+        (stamped.kind === "settle" && !(existing?.receiptNo && existing.receiptNo > 0));
       try {
         applyOps(
           bookRef.current.base.visits,
@@ -236,12 +266,18 @@ export function useTillBook(query?: string) {
         return null;
       }
       setError("");
+      const usedSerial =
+        stamped.kind === "checkIn" || stamped.kind === "addItem"
+          ? stamped.receiptNo ?? nextNo
+          : stamped.kind === "settle"
+            ? stamped.receiptNo ?? nextNo
+            : 0;
       const next = {
         base: {
           ...bookRef.current.base,
           nextReceipt:
-            stamped.kind === "settle"
-              ? Math.max(bookRef.current.base.nextReceipt || 1, (stamped.receiptNo ?? 0) + 1)
+            burnsSerial && usedSerial > 0
+              ? Math.max(bookRef.current.base.nextReceipt || 1, usedSerial + 1)
               : bookRef.current.base.nextReceipt,
         },
         outbox: [...bookRef.current.outbox, stamped],

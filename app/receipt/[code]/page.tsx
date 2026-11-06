@@ -19,8 +19,27 @@ export default async function ReceiptPage({ params }: { params: Promise<{ code: 
   if (!visit) notFound();
   const settings = await getSettings();
   const overtime = visit.status === "open" ? getReceiptOvertime(visit.paidUntil, settings.rates, settings.extraPerMinNu) : null;
+
+  // Prepaid first play (playtime payments) — note only, not charge lines on settle slip.
+  let prepaidBudget = visit.payments
+    .filter((payment) => payment.kind === "playtime")
+    .reduce((sum, payment) => sum + payment.amountNu, 0);
+  const prepaidMinutes: number[] = [];
+  const chargeBlocks = [];
+  for (const block of visit.blocks) {
+    if (prepaidBudget >= block.amountNu && block.paid) {
+      prepaidBudget -= block.amountNu;
+      prepaidMinutes.push(block.minutes);
+    } else {
+      chargeBlocks.push(block);
+    }
+  }
+  const playPaidNote = prepaidMinutes.length
+    ? `Play pass paid at check-in (${prepaidMinutes.map((m) => `${m} min`).join(", ")})`
+    : "";
+
   const lines = [
-    ...visit.blocks.map((block) => ({
+    ...chargeBlocks.map((block) => ({
       name: `Play ${block.minutes} min`,
       qty: 1,
       amount: block.amountNu,
@@ -55,9 +74,19 @@ export default async function ReceiptPage({ params }: { params: Promise<{ code: 
   if (gstNu > 0) lines.push({ name: `GST ${formatRate(settings.gstPercent)}%`, qty: 1, amount: gstNu, paid: visit.status !== "open" });
   const cash = visit.payments.filter((payment) => payment.method === "cash").reduce((sum, payment) => sum + payment.amountNu, 0);
   const bank = visit.payments.filter((payment) => payment.method === "bank_qr").reduce((sum, payment) => sum + payment.amountNu, 0);
+  // Settle tender only (exclude prepaid playtime already taken at check-in).
+  const settleCash = visit.payments
+    .filter((payment) => payment.method === "cash" && payment.kind !== "playtime")
+    .reduce((sum, payment) => sum + payment.amountNu, 0);
+  const settleBank = visit.payments
+    .filter((payment) => payment.method === "bank_qr" && payment.kind !== "playtime")
+    .reduce((sum, payment) => sum + payment.amountNu, 0);
+  const showCash = visit.status === "settled" ? settleCash : cash;
+  const showBank = visit.status === "settled" ? settleBank : bank;
   const banks: { name: string; ref: string; amount: number }[] = [];
   for (const payment of visit.payments) {
     if (payment.method !== "bank_qr" || payment.amountNu <= 0) continue;
+    if (visit.status === "settled" && payment.kind === "playtime") continue;
     const ref = payment.journalRef ?? "";
     const name = payment.payBank || bankFromJournal(ref) || "Bank QR";
     const hit = banks.find((row) => row.name === name && row.ref === ref);
@@ -65,8 +94,13 @@ export default async function ReceiptPage({ params }: { params: Promise<{ code: 
     else banks.push({ name, ref, amount: payment.amountNu });
   }
   const subtotal = lines.reduce((sum, line) => sum + line.amount, 0);
-  const waiveNu = complimentary ? Math.max(0, Math.round(comp?.amountNu || subtotal - cash - bank)) : 0;
-  const total = visit.status === "open" && visit.dueNu > 0 ? visit.dueNu : complimentary ? Math.max(0, subtotal - waiveNu) : cash + bank;
+  const waiveNu = complimentary ? Math.max(0, Math.round(comp?.amountNu || subtotal - showCash - showBank)) : 0;
+  const total =
+    visit.status === "open" && visit.dueNu > 0
+      ? visit.dueNu
+      : complimentary
+        ? Math.max(0, subtotal - waiveNu)
+        : showCash + showBank;
 
   return (
     <main className="receipt-stage">
@@ -74,13 +108,14 @@ export default async function ReceiptPage({ params }: { params: Promise<{ code: 
       <Receipt
         venue={settings.venueName}
         address={settings.address}
+        shopPhone={settings.phone}
         when={formatWhen(visit.closedAt || visit.createdAt)}
         code={visit.code}
         phone={formatPhone(visit.phone)}
         lines={lines}
         total={total}
-        cash={cash}
-        bank={bank}
+        cash={showCash}
+        bank={showBank}
         banks={banks}
         note={settings.receiptNote}
         thanks={settings.receiptThanks}
@@ -88,6 +123,9 @@ export default async function ReceiptPage({ params }: { params: Promise<{ code: 
         number={visit.receiptNo}
         complimentary={complimentary}
         waiveNu={complimentary ? waiveNu : null}
+        payMethod={complimentary ? "comp" : showCash > 0 && showBank > 0 ? "split" : showCash > 0 ? "cash" : showBank > 0 ? "bank_qr" : ""}
+        tableNo={visit.tableNo}
+        playPaidNote={playPaidNote}
       />
     </main>
   );

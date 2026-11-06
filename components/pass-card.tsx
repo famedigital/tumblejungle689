@@ -35,7 +35,13 @@ export function PassCard({
       <article className="print-ticket print-sheet mx-auto max-w-sm rounded-2xl border border-dashed border-primary/40 bg-white p-5 text-foreground">
         <p className="text-xs uppercase tracking-[0.18em] text-primary">{venueName}</p>
         <h2 className="font-heading text-3xl">Play ticket</h2>
-        <p className="mt-1 font-mono text-2xl tracking-[0.2em]">{visit.code}</p>
+        <p className="mt-1 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">Receipt No.</p>
+        <p className="mt-0.5 font-mono text-4xl font-black tracking-[0.12em]">
+          {visit.receiptNo ? `#${visit.receiptNo}` : visit.code}
+        </p>
+        <p className="mt-2 text-center text-xs font-semibold text-foreground">
+          Type this number at the till (Find / Ctrl+K). Scanner not required.
+        </p>
         <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
           <div>
             <dt className="text-muted-foreground">Phone</dt>
@@ -57,7 +63,7 @@ export function PassCard({
         {visit.guardianName ? <p className="mt-3 text-sm">{visit.guardianName}</p> : null}
         <img src={qr} alt="" className="mx-auto mt-4 size-48" />
         <p className="mt-2 text-center text-xs text-muted-foreground">
-          Scan at the cafe, restaurant, or cashier. If this ticket is lost, give the phone number.
+          Staff: type the code above in Find. Phone number also works if the ticket is lost.
         </p>
         <ul className="mt-4 space-y-1 border-t pt-3 text-sm">
           {visit.blocks.map((block) => (
@@ -86,7 +92,10 @@ export function PassCard({
       <article className="print-sticker print-sheet mx-auto hidden w-[52mm] rounded-md border bg-white p-2 text-center print:block">
         <p className="text-[10px] font-medium uppercase tracking-wider">{venueName}</p>
         <img src={qr} alt="" className="mx-auto size-24" />
-        <p className="font-mono text-sm tracking-widest">{visit.code}</p>
+        <p className="font-mono text-xl font-black tracking-widest">
+          {visit.receiptNo ? `#${visit.receiptNo}` : visit.code}
+        </p>
+        <p className="mt-1 text-[9px] font-semibold uppercase tracking-wide">Type Receipt No. at till · Find / Ctrl+K</p>
         <p className="text-[10px]">{formatPhone(visit.phone)}</p>
       </article>
 

@@ -194,6 +194,7 @@ export function CashierTouch({
   const bankAccount = book.base.bankAccount;
   const journalScan = book.base.journalScan;
   const venueAddress = book.base.address;
+  const shopPhone = book.base.phone ?? "";
   const receiptNote = book.base.receiptNote;
   const receiptThanks = book.base.receiptThanks;
   const receiptRules = book.base.receiptRules;
@@ -233,6 +234,11 @@ export function CashierTouch({
     receiptNo: number | null;
     complimentary?: boolean;
     waiveNu?: number;
+    payMethod: string;
+    cashReceived: number;
+    changeNu: number;
+    tableNo: string;
+    playPaidNote?: string;
   } | null>(null);
   const [scanNu, setScanNu] = useState(0);
   const [recentOpen, setRecentOpen] = useState(false);
@@ -307,7 +313,7 @@ export function CashierTouch({
   const overdue = timeUp.length;
   const ending = ranked.filter((row) => !row.walkIn && !row.held && row.left >= 0 && row.left <= 5).length;
   const lookup = counterClear ? "" : (query ?? "").trim();
-  const status = error || ok || (check ? (check.step === "kind" ? "Left and right choose walk-in or play. Enter continues." : check.step === "time" ? "Up and down choose the play time. Enter continues." : "Enter moves on. Escape cancels.") : paySheet && openVisit ? `${walkIn ? tableLabel(openVisit.tableNo) : formatPhone(openVisit.phone)} is on this till` : counterClear ? "Bill held. The counter is clear." : lookup ? `No open play card for ${lookup}` : "Alt+N check-in · Alt+L order · Alt+H people · Ctrl+K find.");
+  const status = error || ok || (check ? (check.step === "kind" ? "Left and right choose walk-in or play. Enter continues." : check.step === "time" ? "Up and down choose the play time. Enter continues." : "Enter moves on. Escape cancels.") : paySheet && openVisit ? `${walkIn ? tableLabel(openVisit.tableNo) : formatPhone(openVisit.phone)} is on this till` : counterClear ? "Bill held. The counter is clear." : lookup ? `No open play card for ${lookup}` : "Alt+N check-in · Alt+L order · Alt+H people · Ctrl+K type ticket code or phone.");
   const extra = overtime ? overtimeSentence(overtime) : "";
   const poleRef = useRef<PolePayload | null>(null);
 
@@ -1477,7 +1483,7 @@ export function CashierTouch({
                     })}
                   </ul>
                 ) : (
-                  <p className="cash-hint">No one is playing. Alt+N check-in · Alt+L order · Alt+H people · Ctrl+K find.</p>
+                  <p className="cash-hint">No one is playing. Alt+N check-in · Alt+L order · Alt+H people · Ctrl+K type ticket code or phone.</p>
                 )}
               </TabsContent>
               {tickets.map((item) => (
@@ -1599,13 +1605,13 @@ export function CashierTouch({
             }
           }}
           title="Find"
-          description="Find a phone or ticket"
+          description="Type ticket code or phone — scanner not required"
           className="top-1/2 -translate-y-1/2 sm:max-w-lg"
         >
           <Command shouldFilter={false}>
-            <CommandInput placeholder="Phone or ticket…" value={scanText} onValueChange={setScanText} />
+            <CommandInput placeholder="Type ticket code or phone" value={scanText} onValueChange={setScanText} />
             <CommandList>
-              <CommandEmpty>{scanText.trim() ? "No match yet." : "Type a phone or ticket code."}</CommandEmpty>
+              <CommandEmpty>{scanText.trim() ? "No match yet — Enter opens the typed code." : "Type a ticket code or phone."}</CommandEmpty>
               {hits.length ? (
                 <CommandGroup heading="Bills">
                   {hits.map((hit) => (
@@ -1643,6 +1649,7 @@ export function CashierTouch({
               <PlayPass
                 venue={venueName}
                 code={visit.code}
+                receiptNo={visit.receiptNo}
                 phone={visit.phone}
                 qr={qr}
                 childCount={visit.childCount}
@@ -1896,13 +1903,15 @@ export function CashierTouch({
                 setTab("playing");
                 return;
               }
-              const code = localCode();
+              const nextNo = Math.max(1, book.base.nextReceipt || 1);
+              const code = localCode(nextNo);
               const saved = book.commit({
                 id: crypto.randomUUID(),
                 at: new Date().toISOString(),
                 kind: "checkIn",
                 visitKey: crypto.randomUUID(),
                 code,
+                receiptNo: nextNo,
                 phone: draft.phone,
                 name: "",
                 childCount: Math.max(1, Number(draft.children) || 1),
@@ -1914,7 +1923,7 @@ export function CashierTouch({
               if (!saved) return;
               setCheck(null);
               setLocalPack(true);
-              book.openBill(code);
+              book.openBill(saved.code);
               setTab("playing");
             }}
             onAdd={(draft) => {
@@ -2002,7 +2011,8 @@ export function CashierTouch({
                 book.addMenu(item);
                 const lineKey = crypto.randomUUID();
                 const key = openVisit ? visitKey(openVisit) : crypto.randomUUID();
-                const code = openVisit ? openVisit.code : localCode();
+                const nextNo = Math.max(1, book.base.nextReceipt || 1);
+                const code = openVisit ? openVisit.code : localCode(nextNo);
                 const saved = book.commit({
                   id: crypto.randomUUID(),
                   at: new Date().toISOString(),
@@ -2012,10 +2022,11 @@ export function CashierTouch({
                   itemId: item.id,
                   outlet: item.outlet,
                   code,
+                  receiptNo: openVisit ? undefined : nextNo,
                 });
                 if (saved && !openVisit) {
-                  book.openBill(code);
-                  setTab(code);
+                  book.openBill(saved.code);
+                  setTab(saved.code);
                 }
               } catch (caught) {
                 const message = caught instanceof Error ? caught.message : "";
@@ -2047,7 +2058,8 @@ export function CashierTouch({
             onAdd={(item) => {
               const lineKey = crypto.randomUUID();
               const key = openVisit ? visitKey(openVisit) : crypto.randomUUID();
-              const code = openVisit ? openVisit.code : localCode();
+              const nextNo = Math.max(1, book.base.nextReceipt || 1);
+              const code = openVisit ? openVisit.code : localCode(nextNo);
               const saved = book.commit({
                 id: crypto.randomUUID(),
                 at: new Date().toISOString(),
@@ -2057,6 +2069,7 @@ export function CashierTouch({
                 itemId: item.id,
                 outlet: item.outlet,
                 code,
+                receiptNo: openVisit ? undefined : nextNo,
               });
               const line =
                 saved?.lines.find((row) => lineKeyOf(row) === lineKey) ??
@@ -2070,8 +2083,8 @@ export function CashierTouch({
                 }, 0);
               }
               if (!saved || openVisit) return;
-              book.openBill(code);
-              setTab(code);
+              book.openBill(saved.code);
+              setTab(saved.code);
             }}
           />
         ) : null}
@@ -2083,6 +2096,8 @@ export function CashierTouch({
               const pay =
                 method === "cash" || method === "split" || method === "bank_qr" || method === "comp" ? method : "bank_qr";
               const cashNu = Number(formData.get("cashNu") ?? 0);
+              const cashReceived = Number(formData.get("cashReceived") ?? 0);
+              const changeFromForm = Number(formData.get("changeNu") ?? 0);
               const bankNu = Number(formData.get("bankNu") ?? 0);
               const saved = book.commit({
                 id: crypto.randomUUID(),
@@ -2102,12 +2117,25 @@ export function CashierTouch({
               const journal = String(formData.get("journal") ?? "").trim();
               const payBank = String(formData.get("payBank") ?? "").trim();
               const bankName = payBank || bankFromJournal(journal) || "Bank QR";
+              const received =
+                pay === "cash" ? (cashReceived > 0 ? cashReceived : due) : pay === "split" ? cashNu : 0;
+              const change =
+                pay === "cash"
+                  ? changeFromForm > 0
+                    ? changeFromForm
+                    : Math.max(0, received - due)
+                  : 0;
+              const prepaidPlay = openVisit.blocks.filter((block) => block.paid);
+              const settlePlay = openVisit.blocks.filter((block) => !block.paid);
+              const playPaidNote = prepaidPlay.length
+                ? `Play pass paid at check-in (${prepaidPlay.map((block) => `${block.minutes} min`).join(", ")})`
+                : "";
               setPaidSlip({
                 code: saved.code,
                 phone: saved.phone,
                 when: saved.closedAt || new Date().toISOString(),
                 lines: [
-                  ...saved.blocks.map((block) => ({
+                  ...settlePlay.map((block) => ({
                     name: `Play ${block.minutes} min`,
                     qty: 1,
                     amount: block.amountNu,
@@ -2116,12 +2144,14 @@ export function CashierTouch({
                   ...(overtime && overtime.amountNu > 0
                     ? [{ name: `Extra ${overtime.extraMinutes} min`, qty: 1, amount: overtime.amountNu, paid: true }]
                     : []),
-                  ...saved.lines.map((line) => ({
-                    name: line.name,
-                    qty: line.qty,
-                    amount: line.amountNu,
-                    paid: true,
-                  })),
+                  ...openVisit.lines
+                    .filter((line) => !line.paid)
+                    .map((line) => ({
+                      name: line.name,
+                      qty: line.qty,
+                      amount: line.amountNu,
+                      paid: true,
+                    })),
                   ...chargeRows.map((row) => ({ name: row.name, qty: 1, amount: row.amount, paid: true })),
                 ],
                 cash,
@@ -2134,6 +2164,11 @@ export function CashierTouch({
                 receiptNo: saved.receiptNo,
                 complimentary: pay === "comp",
                 waiveNu: pay === "comp" ? due : undefined,
+                payMethod: pay,
+                cashReceived: received,
+                changeNu: change,
+                tableNo: saved.tableNo || openVisit.tableNo || "",
+                playPaidNote,
               });
               setTender(null);
             }}
@@ -2218,6 +2253,7 @@ export function CashierTouch({
         <Receipt
           venue={venueName}
           address={venueAddress}
+          shopPhone={shopPhone}
           when={formatWhen(paidSlip?.when || visit?.closedAt || visit?.createdAt || new Date().toISOString())}
           code={paidSlip?.code ?? visit?.code ?? ""}
           phone={paidSlip ? formatPhone(paidSlip.phone) : visit ? formatPhone(visit.phone) : tender?.kind === "checkin" ? formatPhone(tender.phone) : ""}
@@ -2232,6 +2268,12 @@ export function CashierTouch({
           number={paidSlip?.receiptNo ?? visit?.receiptNo}
           complimentary={Boolean(paidSlip?.complimentary)}
           waiveNu={paidSlip?.waiveNu ?? null}
+          payMethod={paidSlip?.payMethod ?? ""}
+          cashReceived={paidSlip?.cashReceived ?? null}
+          changeNu={paidSlip?.changeNu ?? null}
+          staffName={staffName}
+          tableNo={paidSlip?.tableNo || visit?.tableNo || ""}
+          playPaidNote={paidSlip?.playPaidNote ?? ""}
         />
         </PrintPortal>
       ) : null}

@@ -72,7 +72,11 @@ export function TenderSheet({
   const submitCompRef = useRef<() => void>(() => {});
   const cashNu = Math.max(0, Math.round(Number(cashDraft) || 0));
   const bankNu = method === "bank_qr" ? amountNu : method === "split" ? amountNu - cashNu : 0;
+  /** Cash notes taken from guest (cash mode). Defaults to bill total when empty. */
+  const cashReceived = method === "cash" ? (cashNu > 0 ? cashNu : amountNu) : method === "split" ? cashNu : 0;
+  const changeNu = method === "cash" ? Math.max(0, cashReceived - amountNu) : 0;
   const splitReady = method !== "split" || (cashNu > 0 && bankNu > 0 && cashNu + bankNu === amountNu);
+  const cashReady = method !== "cash" || cashReceived >= amountNu;
   const journalReady = bankNu <= 0 || journal.trim().length > 0;
   const bankNamed = bankNu <= 0 || Boolean(payBank);
   const bankReady = (bankNu <= 0 || Boolean(staticPayload)) && journalReady && bankNamed;
@@ -113,6 +117,10 @@ export function TenderSheet({
           submitCompRef.current();
           return;
         }
+        if (method === "cash" && cashNu > 0 && cashNu < amountNu) {
+          cashRef.current?.focus();
+          return;
+        }
         if (bankNu > 0 && !journal.trim()) {
           journalRef.current?.focus();
           return;
@@ -142,7 +150,7 @@ export function TenderSheet({
     }
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [method, onMethod, onPrint, bankNu, journal, allowComp]);
+  }, [method, onMethod, onPrint, bankNu, journal, allowComp, cashNu, amountNu]);
 
   const [prevMethod, setPrevMethod] = useState(method);
   if (method !== prevMethod) {
@@ -152,7 +160,7 @@ export function TenderSheet({
 
   useEffect(() => {
     if (method === "bank_qr") journalRef.current?.focus();
-    if (method === "split") cashRef.current?.focus();
+    if (method === "cash" || method === "split") cashRef.current?.focus();
     if (method === "comp") pinRef.current?.focus();
   }, [method]);
 
@@ -216,6 +224,8 @@ export function TenderSheet({
           <input type="hidden" name="method" value={method} />
           <input type="hidden" name="cashNu" value={method === "split" ? cashNu : 0} />
           <input type="hidden" name="bankNu" value={method === "split" ? Math.max(0, bankNu) : 0} />
+          <input type="hidden" name="cashReceived" value={method === "cash" || method === "split" ? cashReceived : 0} />
+          <input type="hidden" name="changeNu" value={method === "cash" ? changeNu : 0} />
           <input type="hidden" name="journal" value={bankNu > 0 ? journal : ""} />
           <input type="hidden" name="payBank" value={bankNu > 0 ? payBank : ""} />
           <input type="hidden" name="secret" value={method === "comp" ? compPin : ""} />
@@ -262,7 +272,34 @@ export function TenderSheet({
                 />
               </Field>
             ) : null}
-            {method === "cash" ? <p className="text-sm text-muted-foreground">Count the cash, then confirm.</p> : null}
+            {method === "cash" ? (
+              <Field
+                label="Cash received"
+                hint={
+                  cashReceived < amountNu
+                    ? `Need at least ${formatNu(amountNu)}`
+                    : changeNu > 0
+                      ? `Change ${formatNu(changeNu)}`
+                      : "Exact amount — no change"
+                }
+              >
+                <Input
+                  ref={cashRef}
+                  inputMode="numeric"
+                  autoComplete="off"
+                  autoFocus
+                  value={cashDraft}
+                  placeholder={String(amountNu)}
+                  className="h-9"
+                  onChange={(event) => setCashDraft(event.target.value.replace(/\D/g, ""))}
+                />
+              </Field>
+            ) : null}
+            {method === "cash" && cashReceived >= amountNu ? (
+              <p className="text-sm font-semibold tabular-nums text-slate-900 dark:text-white">
+                Due {formatNu(amountNu)} · Received {formatNu(cashReceived)} · Change {formatNu(changeNu)}
+              </p>
+            ) : null}
             {method === "comp" ? (
               <>
                 <p className="text-sm text-muted-foreground">Closes this bill as complimentary. Needs the owner PIN.</p>
@@ -307,6 +344,7 @@ export function TenderSheet({
             {bankNu > 0 && !journalReady ? <Badge variant="destructive">Type the journal number.</Badge> : null}
             {bankNu > 0 && journalReady && !payBank ? <Badge variant="destructive">Pick the bank.</Badge> : null}
             {method === "split" && !splitReady ? <Badge variant="destructive">Cash and bank must add up to the due.</Badge> : null}
+            {method === "cash" && !cashReady ? <Badge variant="destructive">Cash received is less than the bill.</Badge> : null}
             {method === "comp" ? (
               <Button
                 type="button"
@@ -318,11 +356,13 @@ export function TenderSheet({
                 {checking ? "Checking PIN…" : `Complimentary ${formatNu(amountNu)} · Enter`}
               </Button>
             ) : (
-              <Confirm disabled={!bankReady || !splitReady || amountNu <= 0} bank={method === "bank_qr"}>
+              <Confirm disabled={!bankReady || !splitReady || !cashReady || amountNu <= 0} bank={method === "bank_qr"}>
                 {method === "split"
                   ? "Take split · Enter"
                   : method === "cash"
-                    ? `Take cash ${formatNu(amountNu)} · Enter`
+                    ? changeNu > 0
+                      ? `Cash ${formatNu(amountNu)} · Change ${formatNu(changeNu)} · Enter`
+                      : `Take cash ${formatNu(amountNu)} · Enter`
                     : `Bank received ${formatNu(bankNu)} · Enter`}
               </Confirm>
             )}

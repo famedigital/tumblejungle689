@@ -65,6 +65,7 @@ export async function loadTillSnapshot(term?: string): Promise<TillSnapshot> {
     generation: 2,
     venueName: settings.venueName,
     address: settings.address,
+    phone: settings.phone,
     rates: settings.rates,
     extraPerMinNu: settings.extraPerMinNu,
     bankAccount: settings.bankAccount,

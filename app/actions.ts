@@ -318,6 +318,7 @@ export async function saveVenueAction(formData: FormData) {
       address: text(formData, "address"),
       hours: text(formData, "hours"),
       phone: text(formData, "phone"),
+      ownerPhone: text(formData, "ownerPhone"),
       about: text(formData, "about"),
       playBlurb: text(formData, "playBlurb"),
       eatBlurb: text(formData, "eatBlurb"),

@@ -11,6 +11,8 @@ export type Settings = {
   address: string;
   hours: string;
   phone: string;
+  /** Owner WhatsApp (8-digit BT or +975); falls back to venue phone when empty. */
+  ownerPhone: string;
   about: string;
   playBlurb: string;
   eatBlurb: string;

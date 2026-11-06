@@ -78,7 +78,7 @@ export function KotSlip({
       <p className="kot-count">
         {count} {count === 1 ? "item" : "items"}
       </p>
-      <p className="kot-end">{cancel ? "— voided —" : "— end of order —"}</p>
+      <p className="kot-end">{cancel ? "*** VOIDED ***" : "*** END ***"}</p>
     </article>
   );
 }

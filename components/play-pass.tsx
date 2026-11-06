@@ -3,6 +3,7 @@ import { formatPhone, formatWhen } from "@/lib/format";
 export function PlayPass({
   venue,
   code,
+  receiptNo = null,
   phone,
   qr,
   childCount,
@@ -12,6 +13,7 @@ export function PlayPass({
 }: {
   venue: string;
   code: string;
+  receiptNo?: number | null;
   phone: string;
   qr: string;
   childCount?: number;
@@ -21,14 +23,16 @@ export function PlayPass({
 }) {
   const count = childCount ?? legacyChildren ?? 1;
   const kids = Math.max(0, count);
+  const display = receiptNo && receiptNo > 0 ? `#${receiptNo}` : code;
   return (
     <div className="print-sticker-sheet">
       <article className="print-sticker">
-        <p className="pass-kicker">Play pass</p>
+        <p className="pass-kicker">Play pass · Receipt No.</p>
         <p className="pass-venue">{venue}</p>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={qr} alt={`QR code for ${code}`} />
-        <p className="sticker-code">{code}</p>
+        <img src={qr} alt={`QR code for ${display}`} />
+        <p className="sticker-code">{display}</p>
+        <p className="pass-type-hint">Type this Receipt No. at the till (Find / Ctrl+K). Scanner not required.</p>
         <dl className="pass-facts">
           <div>
             <dt>Start</dt>

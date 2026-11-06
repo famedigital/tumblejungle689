@@ -1,9 +1,7 @@
 import { chargeDefaults, quoteCharges, type ChargeRates } from "@/lib/charges";
-import { addMinutes } from "@/lib/format";
+import { addMinutes, serialCode } from "@/lib/format";
 import { quoteOvertime } from "@/lib/overtime";
 import type { MenuItem, Outlet, PayMethod, PaymentRow, Rate, TabLine, VisitView } from "@/lib/types";
-
-const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 export type TillPay = "cash" | "bank_qr" | "split" | "comp";
 
@@ -12,7 +10,7 @@ export type TillOp = {
   at: string;
   visitKey: string;
 } & (
-  | { kind: "addItem"; lineKey: string; itemId: number; outlet: Outlet; code?: string }
+  | { kind: "addItem"; lineKey: string; itemId: number; outlet: Outlet; code?: string; receiptNo?: number }
   | { kind: "qty"; lineKey: string; delta: number }
   | { kind: "removeLine"; lineKey: string }
   | {
@@ -27,6 +25,7 @@ export type TillOp = {
       payBank: string;
       cashNu?: number;
       bankNu?: number;
+      receiptNo?: number;
     }
   | { kind: "addChildren"; childCount: number }
   | { kind: "addPlay"; minutes: number; phone?: string; code?: string }
@@ -63,9 +62,9 @@ export type TillOp = {
     }
 );
 
-export function localCode(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(6));
-  return [...bytes].map((byte) => CODE_ALPHABET[byte % CODE_ALPHABET.length]).join("");
+/** Offline/local serial ticket = next receipt number as digits. */
+export function localCode(nextReceipt = 1): string {
+  return serialCode(Math.max(1, Math.round(nextReceipt) || 1));
 }
 
 export function visitKey(visit: VisitView): string {
@@ -202,7 +201,7 @@ function checkIn(op: Extract<TillOp, { kind: "checkIn" }>, rates: Rate[]): Visit
     payments: money(tempId(`${op.visitKey}:pay`), "playtime", rate.amountNu, op),
     dueNu: 0,
     overtime: null,
-    receiptNo: null,
+    receiptNo: op.receiptNo ?? (Number(op.code) || null),
   };
   return price(visit, rates);
 }
@@ -248,7 +247,7 @@ function walkIn(op: Extract<TillOp, { kind: "addItem" }>, menu: MenuItem[]): Vis
   const item = menu.find((row) => row.id === op.itemId && row.outlet === op.outlet);
   if (!item) throw new Error("That item is not on this counter.");
   assertStock(item);
-  const code = op.code || "WALKIN";
+  const code = op.code || localCode(op.receiptNo ?? 1);
   return {
     id: tempId(op.visitKey),
     clientKey: op.visitKey,
@@ -267,7 +266,7 @@ function walkIn(op: Extract<TillOp, { kind: "addItem" }>, menu: MenuItem[]): Vis
     payments: [],
     dueNu: item.priceNu,
     overtime: null,
-    receiptNo: null,
+    receiptNo: op.receiptNo ?? (Number(code) || null),
   };
 }
 

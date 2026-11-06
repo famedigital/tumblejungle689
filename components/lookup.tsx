@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Scanner } from "@/components/scanner";
 
-export function Lookup({ to, label = "Phone or ticket code" }: { to: string; label?: string }) {
+export function Lookup({ to, label = "Type ticket code or phone" }: { to: string; label?: string }) {
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
       <form action={to} className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-end">
@@ -14,7 +14,7 @@ export function Lookup({ to, label = "Phone or ticket code" }: { to: string; lab
             name="q"
             inputMode="text"
             autoComplete="off"
-            placeholder="17123456 or ticket code"
+            placeholder="Type ticket code or phone"
             className="h-11 text-base"
           />
         </div>
