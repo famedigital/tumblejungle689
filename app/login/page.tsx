@@ -193,14 +193,13 @@ function LoginContent() {
             </div>
           )}
 
-          {/* Staff Quick-Select Chips */}
+          {/* Admin + Staff quick select */}
           {staffList.length > 0 && (
-            <div className="space-y-1.5">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block text-center">
-                Select Operating Staff
-              </span>
-              <div className="flex items-center justify-center gap-2 flex-wrap">
-                {staffList.map((st) => {
+            <div className="space-y-3">
+              {(() => {
+                const admins = staffList.filter((s) => s.role === "admin");
+                const staff = staffList.filter((s) => s.role !== "admin");
+                const chip = (st: StaffOption) => {
                   const isSelected = selectedStaff?.id === st.id;
                   return (
                     <button
@@ -209,8 +208,9 @@ function LoginContent() {
                       onClick={() => {
                         setSelectedStaff(st);
                         setError(null);
+                        setPin("");
                       }}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+                      className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
                         isSelected
                           ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm ring-2 ring-emerald-500/50"
                           : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
@@ -218,13 +218,34 @@ function LoginContent() {
                     >
                       <User className="h-3.5 w-3.5" />
                       <span>{st.name}</span>
-                      <span className="text-[9px] uppercase font-mono opacity-70">
-                        ({st.role})
-                      </span>
                     </button>
                   );
-                })}
-              </div>
+                };
+                return (
+                  <>
+                    <div className="space-y-1.5">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block text-center">
+                        Admin
+                      </span>
+                      <div className="flex items-center justify-center gap-2 flex-wrap">
+                        {admins.length > 0 ? admins.map(chip) : (
+                          <span className="text-[11px] text-slate-400">No admin configured</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block text-center">
+                        Staff
+                      </span>
+                      <div className="flex items-center justify-center gap-2 flex-wrap">
+                        {staff.length > 0 ? staff.map(chip) : (
+                          <span className="text-[11px] text-slate-400">No staff configured</span>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           )}
 
@@ -358,8 +379,14 @@ function LoginContent() {
               </span>
             </button>
 
-            <span className="text-[11px] text-slate-400">
-              Admin PIN: <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded font-mono font-bold text-slate-700 dark:text-slate-300">1111</code>
+            <span className="text-[10px] text-slate-400 text-right leading-relaxed">
+              Admin <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded font-mono font-bold text-slate-700 dark:text-slate-300">9999</code>
+              <br />
+              Staff <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded font-mono font-bold text-slate-700 dark:text-slate-300">1111</code>
+              {" · "}
+              <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded font-mono font-bold text-slate-700 dark:text-slate-300">2222</code>
+              {" · "}
+              <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded font-mono font-bold text-slate-700 dark:text-slate-300">3333</code>
             </span>
           </div>
         </div>
