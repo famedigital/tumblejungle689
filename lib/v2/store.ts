@@ -38,6 +38,7 @@ interface V2State {
   visits: VisitView[];
   selectedVisitId: number | null;
   setSelectedVisitId: (id: number | null) => void;
+  removeVisitLocal: (id: number) => void;
 
   // Cart for Food / KOT
   cart: CartItem[];
@@ -122,6 +123,11 @@ export const useV2Store = create<V2State>((set, get) => ({
   visits: [],
   selectedVisitId: null,
   setSelectedVisitId: (id) => set({ selectedVisitId: id }),
+  removeVisitLocal: (id) =>
+    set((state) => ({
+      visits: state.visits.filter((v) => v.id !== id),
+      selectedVisitId: state.selectedVisitId === id ? null : state.selectedVisitId,
+    })),
 
   cart: [],
   addToCart: (item, qty = 1) => {

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createVisit, addTabItem, getSettings, listMenu } from "@/lib/domain";
+import { createVisit, addTabItem, getSettings, listMenu, payOutlet, getVisitById } from "@/lib/domain";
 import { enqueuePrintJob } from "@/lib/print-jobs";
 
 export async function POST(req: Request) {
@@ -34,18 +34,27 @@ export async function POST(req: Request) {
       station: stationLabel,
     });
 
-    // If socks added, find socks item in menu and add to tab
+    // Socks are paid at admit (same tender as play) — never leave unpaid or Leave/Clear locks.
+    let admitted = visit;
     if (socksCount > 0) {
       const menu = await listMenu();
       const socksItem = menu.find((m) => /sock/i.test(m.name));
       if (socksItem) {
         for (let i = 0; i < socksCount; i++) {
-          await addTabItem(visit.id, socksItem.id, socksItem.outlet || "cafe");
+          await addTabItem(admitted.id, socksItem.id, socksItem.outlet || "cafe");
         }
+        admitted = await payOutlet(
+          admitted.id,
+          socksItem.outlet || "cafe",
+          payMethod,
+          String(journal || "").trim(),
+          String(payBank || "").trim(),
+        );
       }
     }
 
     const settings = await getSettings();
+    admitted = (await getVisitById(admitted.id)) || admitted;
 
     // Format thermal print ticket / wristband slip
     const printTime = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
@@ -92,7 +101,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       ok: true,
-      visit,
+      visit: admitted,
       printJob,
     });
   } catch (error) {

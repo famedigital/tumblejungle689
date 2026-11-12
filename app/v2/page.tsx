@@ -126,6 +126,7 @@ export default function V2HandheldPos() {
     },
     onSelectForCheckout: (v: VisitView) => setSelectedVisitForCheckout(v),
     onExtend: (v: VisitView) => setExtendVisit(v),
+    isAdmin,
   };
 
   return (
