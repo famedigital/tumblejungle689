@@ -39,7 +39,9 @@ export function canFloorDrop(visit: VisitView, now = Date.now()): boolean {
   return true;
 }
 
-/** Play visit fully paid and not in OT (respecting Hold) — safe to clear off the floor. */
+/** Paid play with no open food/play due — Clear button may still need OT settle if late. */
 export function canClearPlay(visit: VisitView, now = Date.now()): boolean {
-  return canLeaveOnTime(visit, now);
+  if (unpaidFood(visit) !== 0 || unpaidPlay(visit) !== 0) return false;
+  if (!isPlayVisit(visit)) return canFloorDrop(visit, now);
+  return canLeaveOnTime(visit, now) || visit.dueNu <= 0;
 }

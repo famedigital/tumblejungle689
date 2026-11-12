@@ -96,15 +96,35 @@ export function FloorRadar({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Action failed");
-      if (action === "leave" || action === "cancel" || action === "void") {
+      if (action === "leave" || action === "clear" || action === "cancel" || action === "void") {
         removeVisitLocal?.(visit.id);
       }
       await bootstrap();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Action failed");
+      const message = err instanceof Error ? err.message : "Action failed";
+      // If clear is blocked by money/OT, jump straight to settle.
+      if (
+        action === "clear" &&
+        (/settle/i.test(message) || /overtime/i.test(message)) &&
+        onSelectForCheckout
+      ) {
+        onSelectForCheckout(visit);
+      }
+      alert(message);
+      await bootstrap();
     } finally {
       setBusyId(null);
     }
+  };
+
+  const clearFloor = async (visit: VisitView) => {
+    const foodDue = visit.lines.filter((l) => !l.paid).reduce((s, l) => s + l.amountNu, 0);
+    const playDue = visit.blocks.filter((b) => !b.paid).reduce((s, b) => s + b.amountNu, 0);
+    if (foodDue + playDue > 0 || visit.dueNu > 0) {
+      onSelectForCheckout(visit);
+      return;
+    }
+    await runAction(visit, "clear");
   };
 
   const reprint = async (visit: VisitView) => {
@@ -238,25 +258,23 @@ export function FloorRadar({
                   </p>
                 ) : null}
 
-                {clearOk ? (
-                  <button
-                    type="button"
-                    disabled={busyId === visit.id}
-                    onClick={() => void runAction(visit, "leave")}
-                    className="mt-2.5 w-full py-2 rounded-lg bg-slate-900 hover:bg-slate-800 dark:bg-emerald-700 dark:hover:bg-emerald-600 text-white text-xs font-bold active:scale-[0.985] inline-flex items-center justify-center gap-1.5"
-                  >
-                    <LogOut className="h-3.5 w-3.5" />
-                    {visit.leftAt ? "Clear from floor" : "End play & clear"}
-                  </button>
-                ) : visit.dueNu > 0 ? (
-                  <p className="mt-2 text-[11px] font-medium text-amber-700 dark:text-amber-300">
-                    Due Nu. {visit.dueNu} — settle (or admin void) to clear the floor.
-                  </p>
-                ) : isOvertime ? (
-                  <p className="mt-2 text-[11px] font-medium text-rose-700 dark:text-rose-300">
-                    Overtime open — Fix overtime, then clear.
-                  </p>
-                ) : null}
+                <button
+                  type="button"
+                  disabled={busyId === visit.id}
+                  onClick={() => void clearFloor(visit)}
+                  className={`mt-2.5 w-full py-2.5 rounded-lg text-xs font-bold active:scale-[0.985] inline-flex items-center justify-center gap-1.5 ${
+                    clearOk || visit.dueNu <= 0
+                      ? "bg-slate-900 hover:bg-slate-800 dark:bg-emerald-700 dark:hover:bg-emerald-600 text-white"
+                      : "bg-amber-600 hover:bg-amber-500 text-white"
+                  }`}
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                  {clearOk || visit.dueNu <= 0
+                    ? visit.leftAt
+                      ? "Clear from floor"
+                      : "End play & clear"
+                    : `Settle Nu. ${visit.dueNu} to clear`}
+                </button>
 
                 <div className="mt-2.5 flex items-center gap-1.5">
                   {playOk && onExtend && !isOvertime ? (
@@ -325,16 +343,14 @@ export function FloorRadar({
                             <Pause className="h-3.5 w-3.5" /> Hold timer
                           </button>
                         ) : null}
-                        {leaveOk ? (
-                          <button
-                            type="button"
-                            disabled={busyId === visit.id}
-                            onClick={() => void runAction(visit, "leave")}
-                            className="w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2"
-                          >
-                            <LogOut className="h-3.5 w-3.5" /> End play & clear
-                          </button>
-                        ) : null}
+                        <button
+                          type="button"
+                          disabled={busyId === visit.id}
+                          onClick={() => void clearFloor(visit)}
+                          className="w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2"
+                        >
+                          <LogOut className="h-3.5 w-3.5" /> Clear floor
+                        </button>
                         {dropOk ? (
                           <button
                             type="button"

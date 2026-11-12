@@ -1080,6 +1080,38 @@ export async function leaveOnTime(visitId: number, actor: TillActor): Promise<Vi
   return (await getVisitById(visitId))!;
 }
 
+/** Desk clear: close floor visit when nothing is owed (handles Hold + zero-due OT edges). */
+export async function clearOpenVisit(visitId: number, actor: TillActor): Promise<VisitView> {
+  const visit = await requireOpen(visitId);
+  const food = unpaidFood(visit);
+  const play = unpaidPlay(visit);
+  if (food + play > 0) {
+    throw new Error(`Settle Nu. ${food + play} first, then clear the floor.`);
+  }
+
+  if (!isPlayVisit(visit)) {
+    if (!canFloorDrop(visit)) throw new Error("This bill needs payment or a manager void.");
+    return cancelHold(visitId, actor);
+  }
+
+  if (canLeaveOnTime(visit)) {
+    return leaveOnTime(visitId, actor);
+  }
+
+  const settings = await getSettings();
+  const clock = visit.leftAt ? new Date(visit.leftAt).getTime() : Date.now();
+  const quote = quoteOvertime(visit.paidUntil, settings.rates, clock, settings.extraPerMinNu);
+  if (quote && quote.amountNu > 0) {
+    throw new Error(`Overtime Nu. ${quote.amountNu} — settle or Fix overtime, then clear.`);
+  }
+
+  await tx(async (database) => {
+    await writeTillEvent(database, visit, actor, "leave", 0, "Cleared floor");
+    await closeVisit(database, visitId);
+  });
+  return (await getVisitById(visitId))!;
+}
+
 export async function cancelHold(visitId: number, actor: TillActor): Promise<VisitView> {
   const visit = await requireOpen(visitId);
   if (!canFloorDrop(visit)) {

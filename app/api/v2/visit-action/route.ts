@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import {
   cancelHold,
+  clearOpenVisit,
   holdPlay,
   leaveOnTime,
   voidVisit,
@@ -29,6 +30,7 @@ export async function POST(req: Request) {
     let visit;
     if (action === "hold") visit = await holdPlay(visitId);
     else if (action === "leave") visit = await leaveOnTime(visitId, actor);
+    else if (action === "clear") visit = await clearOpenVisit(visitId, actor);
     else if (action === "cancel") visit = await cancelHold(visitId, actor);
     else if (action === "waive") {
       if (session.role !== "admin") {
