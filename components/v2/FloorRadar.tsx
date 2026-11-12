@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useV2Store } from "@/lib/v2/store";
 import type { VisitView } from "@/lib/types";
-import { canClearPlay, canFloorDrop, canLeaveOnTime, isPlayVisit } from "@/lib/visit-rules";
+import { canClearPlay, canFloorDrop, isPlayVisit } from "@/lib/visit-rules";
 import { playTimeUpWarning } from "@/lib/audio/sounds";
 import { PlayPass } from "@/components/play-pass";
 import { PrintPortal } from "@/components/print-portal";
@@ -176,7 +176,6 @@ export function FloorRadar({
             const isOvertime = isPlayVisit(visit) && diffMin < 0;
             const isEndingSoon = isPlayVisit(visit) && diffMin >= 0 && diffMin <= 10;
             const overtimeNu = isOvertime ? Math.abs(diffMin) * (extraPerMinNu || 10) : 0;
-            const leaveOk = canLeaveOnTime(visit, now);
             const clearOk = canClearPlay(visit, now);
             const dropOk = canFloorDrop(visit, now);
             const playOk = isPlayVisit(visit);
