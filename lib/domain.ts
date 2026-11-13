@@ -1654,18 +1654,24 @@ export async function listRecentTransactions(limit = 40): Promise<RecentTxn[]> {
     staffName: "",
     createdAt: row.created_at,
   }));
-  const notes: RecentTxn[] = events.map((row) => ({
-    id: row.id,
-    code: row.code,
-    phone: row.phone,
-    status: "settled",
-    kind: row.kind,
-    method: "",
-    amountNu: row.amount_nu,
-    station: "cashier",
-    staffName: row.staff_name,
-    createdAt: row.created_at,
-  }));
+  // Only money / exception till notes — skip leave/clear (Nu 0) so Recent is not doubled.
+  const notes: RecentTxn[] = events
+    .filter((row) => {
+      if (row.kind === "leave" || row.kind === "hold") return false;
+      return row.amount_nu > 0 || row.kind === "void" || row.kind === "waive" || row.kind === "comp";
+    })
+    .map((row) => ({
+      id: row.id,
+      code: row.code,
+      phone: row.phone,
+      status: "settled" as const,
+      kind: row.kind,
+      method: "",
+      amountNu: row.amount_nu,
+      station: "cashier",
+      staffName: row.staff_name,
+      createdAt: row.created_at,
+    }));
   return [...payments, ...notes]
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, limit);
