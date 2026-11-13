@@ -716,7 +716,7 @@ export async function getVisitByCode(code: string): Promise<VisitView | null> {
   if (byCode) return hydrate(byCode);
   if (/^\d+$/.test(clean)) {
     const receiptNo = Number(clean);
-    if (receiptNo > 0) {
+    if (Number.isFinite(receiptNo) && receiptNo >= 0) {
       const byReceipt = await query().one<VisitRow>(`${VISIT_SQL} WHERE v.receipt_no = ?`, [receiptNo]);
       if (byReceipt) return hydrate(byReceipt);
     }
@@ -1543,7 +1543,8 @@ export async function settleVisit(
 
 async function takeReceiptNo(database: Query, preferred = 0): Promise<number> {
   const row = await database.one<{ value: string }>("SELECT value FROM settings WHERE key = 'next_receipt'");
-  const next = Math.max(1, Math.round(Number(row?.value) || 1));
+  // Canonical series: 000, 001, 002, … (stored as 0, 1, 2)
+  const next = Math.max(0, Math.round(Number(row?.value) || 0));
   let chosen = next;
   if (preferred > 0) {
     const used = await database.one<{ id: number }>("SELECT id FROM visits WHERE receipt_no = ?", [preferred]);

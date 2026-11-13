@@ -10,14 +10,15 @@ export function codeFromScan(raw: string): string {
 }
 
 /** Serial ticket / QR code = receipt number as digits (easy to type at till). */
+/** Canonical pass / receipt serial — zero-padded from 000. */
 export function serialCode(receiptNo: number): string {
-  const n = Math.max(1, Math.round(receiptNo));
-  return String(n);
+  const n = Math.max(0, Math.round(receiptNo));
+  return String(n).padStart(3, "0");
 }
 
 export function formatReceiptNo(receiptNo: number | null | undefined): string {
-  if (receiptNo == null || receiptNo <= 0) return "";
-  return `#${receiptNo}`;
+  if (receiptNo == null || receiptNo < 0) return "";
+  return `#${serialCode(receiptNo)}`;
 }
 
 export function tableLabel(tableNo: string): string {
