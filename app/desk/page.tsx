@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-/** Archived: frontdesk lives on /cashier for now. */
+/** Archived — desk till is /v2. */
 export default function DeskPage() {
-  redirect("/cashier");
+  redirect("/v2");
 }

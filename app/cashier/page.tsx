@@ -1,25 +1,16 @@
-import { CashierTouch } from "@/components/cashier-touch";
-import { requireArea } from "@/lib/auth";
+import { redirect } from "next/navigation";
 
+/** Archived v1 till — all stations use /v2. */
 export default async function CashierPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; error?: string; ok?: string; print?: string; hold?: string; new?: string }>;
+  searchParams: Promise<{ q?: string; print?: string; hold?: string; new?: string }>;
 }) {
-  const session = await requireArea("cashier");
   const query = await searchParams;
-  return (
-    <CashierTouch
-      staffName={session.name}
-      role={session.role}
-      error={query.error}
-      ok={query.ok}
-      query={query.q}
-      printTicket={query.print === "ticket"}
-      printReceipt={query.print === "receipt"}
-      printPack={query.print === "pack"}
-      holdOpen={query.hold === "1"}
-      startNew={query.new === "1"}
-    />
-  );
+  const next = new URLSearchParams();
+  if (query.q) next.set("q", query.q);
+  if (query.new === "1") next.set("admit", "1");
+  if (query.hold === "1") next.set("hold", "1");
+  const qs = next.toString();
+  redirect(qs ? `/v2?${qs}` : "/v2");
 }

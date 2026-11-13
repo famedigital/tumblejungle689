@@ -35,7 +35,7 @@ export function ReceiptActions() {
       }
       if (event.key !== "Escape") return;
       event.preventDefault();
-      router.push("/cashier");
+      router.push("/v2");
     }
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
@@ -46,8 +46,8 @@ export function ReceiptActions() {
       <button type="button" className="receipt-print" disabled={busy} onClick={() => void printReceipt()}>
         {busy ? "Sending…" : "Print"}
       </button>
-      <Link href="/cashier" className="receipt-back">
-        Back to cashier
+      <Link href="/v2" className="receipt-back">
+        Back to till
       </Link>
       {status ? <p className="text-sm font-medium text-slate-700 dark:text-slate-300">{status}</p> : null}
     </div>

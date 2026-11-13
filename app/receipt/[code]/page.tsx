@@ -74,19 +74,28 @@ export default async function ReceiptPage({ params }: { params: Promise<{ code: 
   if (gstNu > 0) lines.push({ name: `GST ${formatRate(settings.gstPercent)}%`, qty: 1, amount: gstNu, paid: visit.status !== "open" });
   const cash = visit.payments.filter((payment) => payment.method === "cash").reduce((sum, payment) => sum + payment.amountNu, 0);
   const bank = visit.payments.filter((payment) => payment.method === "bank_qr").reduce((sum, payment) => sum + payment.amountNu, 0);
-  // Settle tender only (exclude prepaid playtime already taken at check-in).
+  // Settle tender (exclude prepaid playtime) — but if leave/clear with no settle lines,
+  // fall back to check-in play payments so the slip is not Nu 0 / blank mode.
   const settleCash = visit.payments
     .filter((payment) => payment.method === "cash" && payment.kind !== "playtime")
     .reduce((sum, payment) => sum + payment.amountNu, 0);
   const settleBank = visit.payments
     .filter((payment) => payment.method === "bank_qr" && payment.kind !== "playtime")
     .reduce((sum, payment) => sum + payment.amountNu, 0);
-  const showCash = visit.status === "settled" ? settleCash : cash;
-  const showBank = visit.status === "settled" ? settleBank : bank;
+  const prepaidCash = visit.payments
+    .filter((payment) => payment.method === "cash" && payment.kind === "playtime")
+    .reduce((sum, payment) => sum + payment.amountNu, 0);
+  const prepaidBank = visit.payments
+    .filter((payment) => payment.method === "bank_qr" && payment.kind === "playtime")
+    .reduce((sum, payment) => sum + payment.amountNu, 0);
+  const settleOnly = settleCash + settleBank;
+  const usePrepaidAsTender = visit.status === "settled" && settleOnly <= 0 && prepaidCash + prepaidBank > 0;
+  const showCash = visit.status === "settled" ? (usePrepaidAsTender ? prepaidCash : settleCash) : cash;
+  const showBank = visit.status === "settled" ? (usePrepaidAsTender ? prepaidBank : settleBank) : bank;
   const banks: { name: string; ref: string; amount: number }[] = [];
   for (const payment of visit.payments) {
     if (payment.method !== "bank_qr" || payment.amountNu <= 0) continue;
-    if (visit.status === "settled" && payment.kind === "playtime") continue;
+    if (visit.status === "settled" && payment.kind === "playtime" && !usePrepaidAsTender) continue;
     const ref = payment.journalRef ?? "";
     const name = payment.payBank || bankFromJournal(ref) || "Bank QR";
     const hit = banks.find((row) => row.name === name && row.ref === ref);
@@ -100,7 +109,9 @@ export default async function ReceiptPage({ params }: { params: Promise<{ code: 
       ? visit.dueNu
       : complimentary
         ? Math.max(0, subtotal - waiveNu)
-        : showCash + showBank;
+        : showCash + showBank > 0
+          ? showCash + showBank
+          : Math.max(subtotal, cash + bank);
 
   return (
     <main className="receipt-stage">
